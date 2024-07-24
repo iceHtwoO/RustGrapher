@@ -1,0 +1,9 @@
+[package]
+name = "graph"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+glium = "*"
+rand = "0.8.5"
+winit = "0.28"
