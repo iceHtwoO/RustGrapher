@@ -74,6 +74,7 @@ where
                 _ => (),
             }
             update(self.graph);
+            self.graph.sim();
             self.draw_graph(&display);
         });
     }
@@ -95,8 +96,8 @@ where
         let mut shape: Vec<Vertex> = vec![];
 
         for edge in self.graph.get_edge_iter() {
-            let n1 = self.graph.get_node_by_index(edge.0).as_ref().unwrap();
-            let n2 = self.graph.get_node_by_index(edge.1).as_ref().unwrap();
+            let n1 = self.graph.get_node_by_index(edge.0);
+            let n2 = self.graph.get_node_by_index(edge.1);
             shape.push(Vertex {
                 position: n1.position,
             });
@@ -127,22 +128,20 @@ where
 
         let mut shape: Vec<Vertex> = vec![];
 
-        for node_opt in self.graph.get_node_iter() {
-            if let Some(node) = node_opt {
-                let pos = node.position;
-                let s = 0.05;
-                shape.push(Vertex {
-                    position: [pos[0] - s, pos[1]],
-                });
+        for node in self.graph.get_node_iter() {
+            let pos = node.position;
+            let s = 0.05;
+            shape.push(Vertex {
+                position: [pos[0] - s, pos[1]],
+            });
 
-                shape.push(Vertex {
-                    position: [pos[0] + s, pos[1]],
-                });
+            shape.push(Vertex {
+                position: [pos[0] + s, pos[1]],
+            });
 
-                shape.push(Vertex {
-                    position: [pos[0], pos[1] + s],
-                });
-            }
+            shape.push(Vertex {
+                position: [pos[0], pos[1] + s],
+            });
         }
 
         let vertex_buffer = glium::VertexBuffer::new(display, &shape).unwrap();

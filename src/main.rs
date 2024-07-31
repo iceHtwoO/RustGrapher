@@ -36,7 +36,7 @@ fn main() {
 }
 
 fn update(graph: &mut Graph<Data>) {
-    if graph.get_node_count() < 20 {
+    if graph.get_node_count() < 60 {
         graph.add_node(Data::new("x".to_string()));
         add_random_edge(graph);
         add_random_edge(graph);
