@@ -1,3 +1,5 @@
+use std::f64::consts::E;
+
 use crate::graph::{Graph, Node};
 
 pub struct SimGraph {
@@ -16,16 +18,16 @@ pub struct SimGraph {
 impl SimGraph {
     pub fn new() -> Self {
         Self {
-            spring_stiffness: 10.0,
-            spring_default_len: 0.25,
-            s_per_update: 0.01,
-            resistance: 0.05,
-            f2c: 0.05,
+            spring_stiffness: 0.4,
+            spring_default_len: 1.0,
+            s_per_update: 0.5,
+            resistance: 0.003,
+            f2c: 0.001,
             electric_repulsion: true,
-            electric_repulsion_const: 0.0005,
+            electric_repulsion_const: 10.1,
             spring: true,
-            gravity: true,
-            res: true,
+            gravity: false,
+            res: false,
         }
     }
 
@@ -34,35 +36,51 @@ impl SimGraph {
         T: PartialEq,
     {
         //self.s_per_update = 1.0 / fps as f64;
-        let mut speedlist = vec![[0.0, 0.0]; g.get_node_count()];
+        let mut f_list = vec![[0.0, 0.0]; g.get_node_count()];
+
+        let mut el_ke: f64 = 0.0;
         if self.electric_repulsion || self.gravity {
             for (i, n1) in g.get_node_iter().enumerate() {
-                let mut speed: [f64; 2] = [0.0, 0.0];
+                let mut e_f: [f64; 2] = [0.0, 0.0];
                 if self.electric_repulsion {
                     for n2 in g.get_node_iter() {
-                        self.electric_repulsion(n1, n2, &mut speed);
+                        let (s_e_f, el_ke_s) = self.electric_repulsion(n1, n2);
+                        e_f[0] += s_e_f[0];
+                        e_f[1] += s_e_f[1];
+                        el_ke += el_ke_s;
                     }
                 }
 
+                let mut grav_f = [0.0, 0.0];
                 if self.gravity {
-                    self.center_grav(n1, &mut speed);
+                    grav_f = self.center_grav(n1);
                 }
-                speedlist[i] = speed;
+                e_f[0] += grav_f[0];
+                e_f[1] += grav_f[1];
+
+                f_list[i] = e_f;
             }
         }
+
+        let mut s_ke = 0.0;
 
         if self.spring {
-            self.spring_force(g, &mut speedlist);
+            s_ke = self.spring_force(g, &mut f_list);
         }
 
-        for (i, n1) in g.get_node_mut_iter().enumerate() {
-            n1.speed[0] += speedlist[i][0];
-            n1.speed[1] += speedlist[i][1];
+        self.clac_pos(g, &f_list);
+        println!("Energy: {}J", self.ke(g) + s_ke + el_ke / 2.0);
+    }
 
-            if self.res {
-                n1.speed[0] -= self.resistance * n1.speed[0];
-                n1.speed[1] -= self.resistance * n1.speed[1];
-            }
+    fn clac_pos<T>(&self, g: &mut Graph<T>, f_list: &Vec<[f64; 2]>)
+    where
+        T: PartialEq,
+    {
+        for (i, n1) in g.get_node_mut_iter().enumerate() {
+            n1.speed[0] = n1.speed[0] * 0.8 + (f_list[i][0] / n1.mass) * self.s_per_update;
+            n1.speed[1] = n1.speed[1] * 0.8 + (f_list[i][1] / n1.mass) * self.s_per_update;
+            n1.speed[0] = n1.speed[0].signum() * n1.speed[0].abs().min(10.0);
+            n1.speed[1] = n1.speed[1].signum() * n1.speed[1].abs().min(10.0);
         }
 
         for n in g.get_node_mut_iter() {
@@ -80,6 +98,18 @@ impl SimGraph {
         }
     }
 
+    fn ke<T>(&self, g: &mut Graph<T>) -> f64
+    where
+        T: PartialEq,
+    {
+        let mut ke = 0.0;
+        for n in g.get_node_iter() {
+            ke += 0.5 * n.speed[0].powi(2) * n.mass;
+            ke += 0.5 * n.speed[1].powi(2) * n.mass;
+        }
+        ke
+    }
+
     fn calc_dir_vec<T>(n1: &Node<T>, n2: &Node<T>) -> [f64; 2]
     where
         T: PartialEq,
@@ -94,15 +124,9 @@ impl SimGraph {
     where
         T: PartialEq,
     {
-        let v = f64::sqrt(
+        f64::sqrt(
             (n2.position[0] - n1.position[0]).powi(2) + (n2.position[1] - n1.position[1]).powi(2),
-        );
-        if v.is_nan() {
-            println!("DDDDDDDDDDDDDDDDDDDDD");
-            0.0
-        } else {
-            v
-        }
+        )
     }
 
     fn calc_dist_2c<T>(n1: &Node<T>) -> f64
@@ -122,10 +146,11 @@ impl SimGraph {
         )
     }
 
-    fn spring_force<T>(&self, g: &Graph<T>, speedlist: &mut Vec<[f64; 2]>)
+    fn spring_force<T>(&self, g: &Graph<T>, forcelist: &mut Vec<[f64; 2]>) -> f64
     where
         T: PartialEq,
     {
+        let mut ke = 0.0;
         for (i, edge) in g.get_edge_iter().enumerate() {
             let n1 = g.get_node_by_index(edge.0);
             let n2 = g.get_node_by_index(edge.1);
@@ -139,63 +164,52 @@ impl SimGraph {
                 continue;
             }
 
-            let mut force_x = self.spring_stiffness * diff * (vec[0].abs() / x_y_len);
-            let mut force_y = self.spring_stiffness * diff * (vec[1].abs() / x_y_len);
+            ke += 0.5 * self.spring_stiffness * diff.powi(2);
 
-            if force_x.is_nan() {
-                println!("AAAAAAAAAAAAAAAAAAAAAAA");
-                force_x = 0.0;
-            }
+            let force_x = self.spring_stiffness * diff * (vec[0].abs() / x_y_len);
+            let force_y = self.spring_stiffness * diff * (vec[1].abs() / x_y_len);
 
-            if force_y.is_nan() {
-                println!("BBBBB");
-                force_y = 0.0;
-            }
+            forcelist[edge.0][0] += force_x * -vec[0].signum();
+            forcelist[edge.0][1] += force_y * -vec[1].signum();
 
-            let a_x_n1 = (force_x * -vec[0].signum()) / n1.mass;
-            let a_y_n1 = (force_y * -vec[1].signum()) / n1.mass;
-            let a_x_n2 = (force_x * vec[0].signum()) / n2.mass;
-            let a_y_n2 = (force_y * vec[1].signum()) / n2.mass;
-
-            speedlist[edge.0][0] += self.s_per_update * a_x_n1;
-            speedlist[edge.0][1] += self.s_per_update * a_y_n1;
-
-            speedlist[edge.1][0] += self.s_per_update * a_x_n2;
-            speedlist[edge.1][1] += self.s_per_update * a_y_n2;
+            forcelist[edge.1][0] += force_x * vec[0].signum();
+            forcelist[edge.1][1] += force_y * vec[1].signum();
         }
+        ke
     }
 
-    fn electric_repulsion<T>(&self, n1: &Node<T>, n2: &Node<T>, speed: &mut [f64; 2])
+    fn electric_repulsion<T>(&self, n1: &Node<T>, n2: &Node<T>) -> ([f64; 2], f64)
     where
         T: PartialEq,
     {
+        if n1 == n2 {
+            return ([0.0, 0.0], 0.0);
+        }
+        let mut ke = 0.0;
         let dist = Self::calc_dist_x_y(n1, n2);
-
+        let vec = Self::calc_dir_vec(n1, n2);
+        let mut force = [0.0, 0.0];
+        ke += (self.electric_repulsion_const * (n1.mass * n2.mass).abs()) / Self::calc_dist(n1, n2);
         if dist.0 != 0.0 {
-            if (dist.0.powi(2)).is_nan() || (dist.1.powi(2)).is_nan() {
-                println!("CCCCCCCCCCCCCCCCCCCCCC");
-                return;
-            }
-            let repx =
-                (self.electric_repulsion_const * -(n1.mass * n2.mass).abs()) / dist.0.powi(2);
-            let a: f64 = repx.signum() * repx.abs().min(1.0) / n1.mass * dist.0.signum();
-            speed[0] += self.s_per_update * a;
+            force[0] += vec[0].signum()
+                * (self.electric_repulsion_const * -(n1.mass * n2.mass).abs())
+                / dist.0.powi(2);
         }
         if dist.1 != 0.0 {
-            let repx =
-                (self.electric_repulsion_const * -(n1.mass * n2.mass).abs()) / dist.1.powi(2);
-            let a: f64 = repx.signum() * repx.abs().min(1.0) / n1.mass * dist.1.signum();
-            speed[1] += self.s_per_update * a;
+            force[1] = vec[1].signum()
+                * (self.electric_repulsion_const * -(n1.mass * n2.mass).abs())
+                / dist.1.powi(2);
         }
+        (force, ke)
     }
 
-    fn center_grav<T>(&self, n1: &Node<T>, speed: &mut [f64; 2])
+    fn center_grav<T>(&self, n1: &Node<T>) -> [f64; 2]
     where
         T: PartialEq,
     {
-        let a_x: f64 = -self.f2c * n1.position[0].signum() * Self::calc_dist_2c(&n1);
-        let a_y: f64 = -self.f2c * n1.position[1].signum() * Self::calc_dist_2c(&n1);
-        speed[0] += self.s_per_update * a_x;
-        speed[1] += self.s_per_update * a_y;
+        [
+            -self.f2c * n1.position[0].signum(),
+            -self.f2c * n1.position[1].signum(),
+        ]
     }
 }

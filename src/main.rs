@@ -29,19 +29,39 @@ impl PartialEq for Data {
     }
 }
 
-static mut changed_mass: bool = false;
-
 fn main() {
     let mut g = Graph::<Data>::new();
-    g.add_node_pos(Data::new("x".to_string()), [0.0, 0.0], false, 100.0);
-    g.add_node_pos(Data::new("x".to_string()), [0.6, 0.0], false, 1.0);
+    g.add_node_pos(Data::new("x".to_string()), [0.0, 0.0], false, 5.0);
+    g.add_node_pos(Data::new("x".to_string()), [0.5, 0.0], false, 5.0);
+    g.add_edge(0, 1, 1);
     for i in 0..100 {
-        let y: f64 = rand::thread_rng().gen_range(1.0..60.0);
-        g.add_node_rand_pos(Data::new("x".to_string()), false, y);
+        g.add_node(Data::new("x".to_string()));
         add_random_edge(&mut g);
         add_random_edge(&mut g);
         add_random_edge(&mut g);
+        add_random_edge(&mut g);
+        g.add_edge(i, 0, 1);
     }
+    for i in 100..140 {
+        g.add_node(Data::new("x".to_string()));
+        add_random_edge(&mut g);
+        add_random_edge(&mut g);
+        g.add_edge(i, 3, 1);
+    }
+    for i in 120..300 {
+        g.add_node(Data::new("x".to_string()));
+        add_random_edge(&mut g);
+        add_random_edge(&mut g);
+        g.add_edge(i, 1, 1);
+    }
+    g.add_edge(1, 0, 1);
+    for i in 300..500 {
+        g.add_node(Data::new("x".to_string()));
+        add_random_edge(&mut g);
+        add_random_edge(&mut g);
+        g.add_edge(i, 5, 6);
+    }
+
     g.change_mass_based_on_incoming();
 
     let mut datavis = datavis::DataVis::new(&mut g);
