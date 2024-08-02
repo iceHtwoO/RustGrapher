@@ -33,14 +33,12 @@ static mut changed_mass: bool = false;
 
 fn main() {
     let mut g = Graph::<Data>::new();
-    g.add_node(Data::new("x".to_string()));
-    g.add_node(Data::new("x".to_string()));
-    g.add_node(Data::new("x".to_string()));
-    g.add_node(Data::new("x".to_string()));
-    g.add_node(Data::new("x".to_string()));
-    g.add_node(Data::new("x".to_string()));
-    for i in 0..5 {
-        g.add_node(Data::new("x".to_string()));
+    g.add_node_pos(Data::new("x".to_string()), [0.0, 0.0], false, 100.0);
+    g.add_node_pos(Data::new("x".to_string()), [0.6, 0.0], false, 1.0);
+    for i in 0..100 {
+        let y: f64 = rand::thread_rng().gen_range(1.0..60.0);
+        g.add_node_rand_pos(Data::new("x".to_string()), false, y);
+        add_random_edge(&mut g);
         add_random_edge(&mut g);
         add_random_edge(&mut g);
     }
@@ -52,9 +50,6 @@ fn main() {
 
 fn update(graph: &mut Graph<Data>, fps: u128) {
     let time = 1.0 / fps as f32; // 0.1s
-    thread::sleep(time::Duration::from_nanos(
-        ((0.017 - time) * 1_000_000_000.0) as u64,
-    ));
 }
 
 fn add_random_edge(graph: &mut Graph<Data>) {

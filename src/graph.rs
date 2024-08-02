@@ -1,11 +1,12 @@
 use std::{
-    f32::MIN,
+    f64::MIN,
     hash::Hash,
     slice::{Iter, IterMut},
     vec,
 };
 
 use rand::Rng;
+use winit::dpi::Position;
 
 pub enum GraphType {
     Directed,
@@ -19,9 +20,9 @@ where
     T: PartialEq,
 {
     pub data: T,
-    pub position: [f32; 2],
-    pub speed: [f32; 2],
-    pub mass: f32,
+    pub position: [f64; 2],
+    pub speed: [f64; 2],
+    pub mass: f64,
     pub fixed: bool,
 }
 
@@ -41,8 +42,8 @@ where
     T: PartialEq,
 {
     pub fn new(data: T) -> Self {
-        let x: f32 = rand::thread_rng().gen_range(-1.0..1.0);
-        let y: f32 = rand::thread_rng().gen_range(-1.0..1.0);
+        let x: f64 = rand::thread_rng().gen_range(-1.0..1.0);
+        let y: f64 = rand::thread_rng().gen_range(-1.0..1.0);
         Self {
             data,
             position: [x, y],
@@ -80,12 +81,31 @@ where
         self.nodes.len()
     }
 
-    pub fn add_node_pos(&mut self, data: T, position: [f32; 2], fixed: bool) -> DefaultIndex {
+    pub fn add_node_pos(
+        &mut self,
+        data: T,
+        position: [f64; 2],
+        fixed: bool,
+        mass: f64,
+    ) -> DefaultIndex {
         self.nodes.push(Node {
             data,
             position,
             speed: [0.0, 0.0],
-            mass: 1.0,
+            mass,
+            fixed,
+        });
+        self.nodes.len()
+    }
+
+    pub fn add_node_rand_pos(&mut self, data: T, fixed: bool, mass: f64) -> DefaultIndex {
+        let x: f64 = rand::thread_rng().gen_range(-1.0..1.0);
+        let y: f64 = rand::thread_rng().gen_range(-1.0..1.0);
+        self.nodes.push(Node {
+            data,
+            position: [x, y],
+            speed: [0.0, 0.0],
+            mass,
             fixed,
         });
         self.nodes.len()
@@ -119,7 +139,7 @@ where
         self.edges.iter()
     }
 
-    pub fn set_node_speed(&mut self, i: DefaultIndex, speed: [f32; 2]) {
+    pub fn set_node_speed(&mut self, i: DefaultIndex, speed: [f64; 2]) {
         self.nodes.get_mut(i).unwrap().speed = speed;
     }
 
@@ -156,7 +176,7 @@ where
         }
 
         for (i, node) in self.get_node_mut_iter().enumerate() {
-            node.mass += count[i] as f32 * node.mass as f32;
+            node.mass += count[i] as f64 * node.mass as f64;
         }
     }
 }
