@@ -5,13 +5,13 @@ pub mod datavis;
 pub mod graph;
 pub mod simgraph;
 
-use core::time;
-use std::thread::{self, sleep};
-use std::time::Instant;
-
 use graph::Graph;
 
 use rand::Rng;
+use serde::Deserialize;
+use std::fs::File;
+use std::io::BufReader;
+use std::io::Error;
 
 struct Data {
     name: String,
@@ -23,6 +23,12 @@ impl Data {
     }
 }
 
+#[derive(Deserialize, Debug)]
+struct WikiEntry {
+    title: String,
+    references: Vec<String>,
+}
+
 impl PartialEq for Data {
     fn eq(&self, other: &Self) -> bool {
         self.name == other.name
@@ -31,41 +37,60 @@ impl PartialEq for Data {
 
 fn main() {
     let mut g = Graph::<Data>::new();
-    g.add_node_pos(Data::new("x".to_string()), [0.0, 0.0], false, 5.0);
-    g.add_node_pos(Data::new("x".to_string()), [0.5, 0.0], false, 5.0);
-    g.add_edge(0, 1, 1);
-    for i in 0..100 {
-        g.add_node(Data::new("x".to_string()));
-        add_random_edge(&mut g);
-        add_random_edge(&mut g);
-        add_random_edge(&mut g);
-        add_random_edge(&mut g);
-        g.add_edge(i, 0, 1);
-    }
-    for i in 100..140 {
-        g.add_node(Data::new("x".to_string()));
-        add_random_edge(&mut g);
-        add_random_edge(&mut g);
-        g.add_edge(i, 3, 1);
-    }
-    for i in 120..300 {
-        g.add_node(Data::new("x".to_string()));
-        add_random_edge(&mut g);
-        add_random_edge(&mut g);
-        g.add_edge(i, 1, 1);
-    }
-    g.add_edge(1, 0, 1);
-    for i in 300..500 {
-        g.add_node(Data::new("x".to_string()));
-        add_random_edge(&mut g);
-        add_random_edge(&mut g);
-        g.add_edge(i, 5, 6);
-    }
+    //rand_graph(&mut g);
+    graph_wiki(&mut g);
 
     g.change_mass_based_on_incoming();
-
     let mut datavis = datavis::DataVis::new(&mut g);
     datavis.create_window(&update);
+}
+
+fn graph_wiki(mut g: &mut Graph<Data>) {
+    if let Ok(w) = load_wiki() {
+        for e in w {
+            println!("Node Count:{}", g.get_node_count());
+            if (g.get_node_count() > 10000) {
+                break;
+            }
+            let node_data = Data::new(e.title);
+            let opt = g.contains_node(&node_data);
+            let mut index = 0;
+            if opt.is_none() {
+                index = g.add_node(node_data);
+            } else {
+                index = opt.unwrap();
+            }
+
+            for r in e.references {
+                let ref_data = Data::new(r);
+                let opt_ref = g.contains_node(&ref_data);
+                let mut index_ref = 0;
+                if opt_ref.is_none() {
+                    index_ref = g.add_node(ref_data);
+                } else {
+                    index_ref = opt_ref.unwrap();
+                }
+                g.add_edge(index, index_ref, 1);
+            }
+        }
+    }
+
+    println!("Nodes:{}", g.get_node_count());
+    println!("Edges:{}", g.get_edge_count());
+}
+
+fn load_wiki() -> Result<Vec<WikiEntry>, Error> {
+    let file = File::open("references.json")?;
+    let reader = BufReader::new(file);
+
+    let wiki: Vec<WikiEntry> = serde_json::from_reader(reader)?;
+    Ok(wiki)
+}
+
+fn rand_graph(mut g: &mut Graph<Data>) {
+    g.add_node_pos(Data::new("x".to_string()), [0.0, 0.0], true, 5.0);
+    g.add_node_pos(Data::new("y".to_string()), [-10.0, 0.0], false, 5.0);
+    g.add_edge(0, 1, 1);
 }
 
 fn update(graph: &mut Graph<Data>, fps: u128) {

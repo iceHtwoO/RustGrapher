@@ -1,12 +1,9 @@
 use std::{
-    f64::MIN,
-    hash::Hash,
     slice::{Iter, IterMut},
     vec,
 };
 
 use rand::Rng;
-use winit::dpi::Position;
 
 pub enum GraphType {
     Directed,
@@ -42,8 +39,8 @@ where
     T: PartialEq,
 {
     pub fn new(data: T) -> Self {
-        let x: f64 = rand::thread_rng().gen_range(-1.0..1.0);
-        let y: f64 = rand::thread_rng().gen_range(-1.0..1.0);
+        let x: f64 = rand::thread_rng().gen_range(-60.0..60.0);
+        let y: f64 = rand::thread_rng().gen_range(-60.0..60.0);
         Self {
             data,
             position: [x, y],
@@ -62,6 +59,7 @@ where
     nodes: Vec<Node<T>>,
     edges: Vec<Edge>,
     graph_type: GraphType,
+    last_avg_pos: [f64; 2],
 }
 
 impl<T> Graph<T>
@@ -73,12 +71,13 @@ where
             nodes: vec![],
             edges: vec![],
             graph_type: GraphType::Undirected,
+            last_avg_pos: [0.0, 0.0],
         }
     }
 
     pub fn add_node(&mut self, data: T) -> DefaultIndex {
         self.nodes.push(Node::new(data));
-        self.nodes.len()
+        self.nodes.len() - 1
     }
 
     pub fn add_node_pos(
@@ -99,8 +98,8 @@ where
     }
 
     pub fn add_node_rand_pos(&mut self, data: T, fixed: bool, mass: f64) -> DefaultIndex {
-        let x: f64 = rand::thread_rng().gen_range(-1.0..1.0);
-        let y: f64 = rand::thread_rng().gen_range(-1.0..1.0);
+        let x: f64 = rand::thread_rng().gen_range(-60.0..60.0);
+        let y: f64 = rand::thread_rng().gen_range(-60.0..60.0);
         self.nodes.push(Node {
             data,
             position: [x, y],
@@ -133,6 +132,19 @@ where
 
     pub fn get_node_count(&self) -> DefaultIndex {
         self.nodes.len()
+    }
+
+    pub fn get_edge_count(&self) -> DefaultIndex {
+        self.edges.len()
+    }
+
+    pub fn contains_node(&self, node: &T) -> Option<DefaultIndex> {
+        for (i, n) in self.get_node_iter().enumerate() {
+            if n.data == *node {
+                return Some(i);
+            }
+        }
+        return None;
     }
 
     pub fn get_edge_iter(&self) -> Iter<'_, Edge> {
@@ -178,5 +190,26 @@ where
         for (i, node) in self.get_node_mut_iter().enumerate() {
             node.mass += count[i] as f64 * node.mass as f64;
         }
+    }
+
+    pub fn avg_pos(&self) -> [f64; 2] {
+        let mut avg_pos = [0.0, 0.0];
+        for n in self.get_node_iter() {
+            avg_pos[0] += n.position[0];
+            avg_pos[1] += n.position[1];
+        }
+
+        avg_pos[0] /= self.get_node_count() as f64;
+        avg_pos[1] /= self.get_node_count() as f64;
+
+        avg_pos
+    }
+
+    pub fn avg_avg_pos(&mut self) -> [f64; 2] {
+        let mut avg_pos = self.avg_pos();
+        avg_pos[0] = (avg_pos[0] + self.last_avg_pos[0]) / 2.0;
+        avg_pos[1] = (avg_pos[1] + self.last_avg_pos[1]) / 2.0;
+        self.last_avg_pos = avg_pos;
+        avg_pos
     }
 }

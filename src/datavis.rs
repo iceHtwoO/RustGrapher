@@ -1,4 +1,8 @@
-use std::time::{Instant, SystemTime, UNIX_EPOCH};
+use core::f64;
+use std::{
+    f64::{consts::PI, INFINITY},
+    time::{Instant, SystemTime, UNIX_EPOCH},
+};
 
 use crate::{simgraph::SimGraph, Graph};
 use glium::{glutin::surface::WindowSurface, implement_vertex, Display, Frame, Surface};
@@ -33,7 +37,7 @@ void main() {
     color = vec4(vertex_color);
 }
 "#;
-#[derive(Copy, Clone)]
+#[derive(Copy, Clone, Debug)]
 struct Vertex {
     position: [f64; 2],
     color: [f32; 4],
@@ -70,25 +74,38 @@ where
         let mut now = Instant::now();
         let mut last_redraw = Instant::now();
 
+        let mut scroll_scale: f64 = 1.0;
+
         event_loop.run_return(|event, _, control_flow| {
             *control_flow = ControlFlow::Poll;
 
+            let fps = 1_000_000_000 / now.elapsed().as_nanos();
+            now = Instant::now();
             match event {
                 Event::WindowEvent { event, .. } => match event {
                     WindowEvent::CloseRequested | WindowEvent::Destroyed => {
                         *control_flow = ControlFlow::Exit;
                     }
+                    WindowEvent::MouseWheel {
+                        device_id,
+                        delta,
+                        phase,
+                        modifiers,
+                    } => match delta {
+                        winit::event::MouseScrollDelta::LineDelta(x, y) => {
+                            scroll_scale += y as f64 * 0.5;
+                        }
+                        _ => (),
+                    },
                     _ => (),
                 },
                 _ => (),
             }
 
-            let fps = 1_000_000_000 / now.elapsed().as_nanos();
-            now = Instant::now();
             update(self.graph, fps);
             self.sim.sim(self.graph, fps);
             if last_redraw.elapsed().as_millis() >= 17 {
-                self.draw_graph(&display);
+                self.draw_graph(&display, &scroll_scale);
                 println!("FPS{}", (fps + lastfps) / 2);
                 last_redraw = Instant::now();
             }
@@ -97,29 +114,39 @@ where
         });
     }
 
-    fn draw_graph(&self, display: &Display<WindowSurface>) {
+    fn draw_graph(&mut self, display: &Display<WindowSurface>, scroll_scale: &f64) {
         let mut target = display.draw();
         target.clear_color(1.0, 1.0, 1.0, 1.0);
 
-        let mut x_max: f64 = 0.1;
-        let mut y_max: f64 = 0.1;
-        for n in self.graph.get_node_iter() {
-            x_max = x_max.max(n.position[0].abs());
-            y_max = y_max.max(n.position[1].abs());
+        let mut max: f64 = -INFINITY;
+        let mut min: f64 = INFINITY;
+        let avg_pos = self.graph.avg_pos();
+        for (i, n) in self.graph.get_node_iter().enumerate() {
+            max = max.max(n.position[0]);
+
+            min = min.min(n.position[0]);
         }
 
-        let scale = (1.0 / x_max.max(y_max)).max(1.0);
-        println!("SCALE{}", x_max.max(y_max));
+        let scale = 2.0 / (((max - min).abs()).max(100.0) + 0.01) + 0.001;
+
+        //println!("SCALE{}", 2.0 / scale);
 
         let mut max_m = 0.0;
         for n in self.graph.get_node_iter() {
             max_m = n.mass.max(max_m);
         }
 
-        self.draw_edge(&mut target, display, &scale, &max_m);
-        self.draw_node(&mut target, display, &scale, &max_m);
+        self.draw_edge(&mut target, display, &scale, &max_m, &avg_pos);
+        self.draw_node(&mut target, display, &scale, &max_m, &avg_pos);
 
         target.finish().unwrap();
+
+        let image: glium::texture::RawImage2d<'_, u8> = display.read_front_buffer().unwrap();
+        let image =
+            image::ImageBuffer::from_raw(image.width, image.height, image.data.into_owned())
+                .unwrap();
+        let image = image::DynamicImage::ImageRgba8(image).into_rgba16();
+        image.save("glium-example-screenshot.png").unwrap();
     }
 
     fn draw_edge(
@@ -128,6 +155,7 @@ where
         display: &Display<WindowSurface>,
         scale: &f64,
         max_m: &f64,
+        avg: &[f64; 2],
     ) {
         let program =
             glium::Program::from_source(display, VERTEX_SHADER_SRC, FRAGMENT_SHADER_SRC, None)
@@ -138,9 +166,14 @@ where
         for edge in self.graph.get_edge_iter() {
             let n1 = self.graph.get_node_by_index(edge.0);
             let n2 = self.graph.get_node_by_index(edge.1);
-
-            let p1 = [n1.position[0] * scale * 0.9, n1.position[1] * scale * 0.9];
-            let p2 = [n2.position[0] * scale * 0.9, n2.position[1] * scale * 0.9];
+            let p1 = [
+                (n1.position[0] - avg[0]) * scale,
+                (n1.position[1] - avg[1]) * scale,
+            ];
+            let p2 = [
+                (n2.position[0] - avg[0]) * scale,
+                (n2.position[1] - avg[1]) * scale,
+            ];
 
             let min_m = n1.mass.min(n2.mass);
 
@@ -185,6 +218,7 @@ where
         display: &Display<WindowSurface>,
         scale: &f64,
         max_m: &f64,
+        avg: &[f64; 2],
     ) {
         let program =
             glium::Program::from_source(display, VERTEX_SHADER_SRC, FRAGMENT_SHADER_SRC, None)
@@ -194,23 +228,22 @@ where
 
         for (e, node) in self.graph.get_node_iter().enumerate() {
             let mut pos = node.position;
-            let s = (f64::sqrt(node.mass) * scale) * 0.01 * 0.5;
+            let r = (f64::sqrt(node.mass * PI) * scale) * 0.1;
 
-            if pos[0].abs() > 1.0 || pos[1].abs() > 1.0 {
-                continue;
-            }
+            pos[0] -= avg[0];
+            pos[1] -= avg[1];
 
-            pos[0] *= 0.9 * scale;
-            pos[1] *= 0.9 * scale;
+            pos[0] *= scale;
+            pos[1] *= scale;
 
-            let mut r = StdRng::seed_from_u64(e as u64);
+            let mut rand = StdRng::seed_from_u64(e as u64);
             let color = [
-                (r.gen_range(0..=100) as f32) / 100.0,
-                (r.gen_range(0..=100) as f32) / 100.0,
-                (r.gen_range(0..=100) as f32) / 100.0,
+                (rand.gen_range(0..=100) as f32) / 100.0,
+                (rand.gen_range(0..=100) as f32) / 100.0,
+                (rand.gen_range(0..=100) as f32) / 100.0,
                 (node.mass / max_m) as f32,
             ];
-            let mut v = create_cube(pos, color, s);
+            let mut v = create_circle(pos, color, r, 30);
             shape.append(&mut v);
         }
 
@@ -259,5 +292,34 @@ fn create_cube(pos: [f64; 2], color: [f32; 4], s: f64) -> Vec<Vertex> {
         position: [pos[0] - s, pos[1] + s],
         color,
     });
+    shape
+}
+
+fn create_circle(pos: [f64; 2], color: [f32; 4], r: f64, res: usize) -> Vec<Vertex> {
+    let mut shape = Vec::with_capacity(3 * res);
+    let a = 2.0 * PI / res as f64;
+
+    for i in 0..res {
+        let i = i as f64;
+        shape.push(Vertex {
+            position: pos,
+            color,
+        });
+        shape.push(Vertex {
+            position: [
+                pos[0] + (r * f64::sin(a * i)),
+                pos[1] + (r * f64::cos(a * i)),
+            ],
+            color,
+        });
+        shape.push(Vertex {
+            position: [
+                pos[0] + (r * f64::sin(a * (i + 1.0))),
+                pos[1] + (r * f64::cos(a * (i + 1.0))),
+            ],
+            color,
+        });
+    }
+
     shape
 }
