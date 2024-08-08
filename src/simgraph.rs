@@ -1,3 +1,8 @@
+use std::{
+    sync::{Arc, Mutex},
+    thread,
+};
+
 use crate::graph::{Graph, Node};
 
 pub struct SimGraph {
@@ -11,6 +16,23 @@ pub struct SimGraph {
     gravity: bool,
     damping: f64,
     max_force: f64,
+}
+
+impl Clone for SimGraph {
+    fn clone(&self) -> Self {
+        Self {
+            spring_stiffness: self.spring_stiffness.clone(),
+            spring_default_len: self.spring_default_len.clone(),
+            s_per_update: self.s_per_update.clone(),
+            f2c: self.f2c.clone(),
+            electric_repulsion: self.electric_repulsion.clone(),
+            electric_repulsion_const: self.electric_repulsion_const.clone(),
+            spring: self.spring.clone(),
+            gravity: self.gravity.clone(),
+            damping: self.damping.clone(),
+            max_force: self.max_force.clone(),
+        }
+    }
 }
 
 impl SimGraph {
@@ -29,58 +51,126 @@ impl SimGraph {
         }
     }
 
-    pub fn sim<T>(&mut self, g: &mut Graph<T>, fps: u128)
+    pub fn sim<T>(self, mut g_arc: Arc<Mutex<Graph<T>>>, fps: u128)
     where
-        T: PartialEq,
+        T: PartialEq + Send + Sync + 'static + Clone,
     {
         //self.s_per_update = 1.0 / fps as f64;
-        let mut f_list = vec![[0.0, 0.0]; g.get_node_count()];
+        let mutex = g_arc.lock().unwrap();
+        let mut f_list = Arc::new(Mutex::new(vec![[0.0, 0.0]; mutex.get_node_count()]));
+        drop(mutex);
 
-        let mut el_ke: f64 = 0.0;
-        if self.electric_repulsion || self.gravity {
-            for (i, n1) in g.get_node_iter().enumerate() {
-                let mut e_f: [f64; 2] = f_list[i];
-                if self.electric_repulsion {
-                    for (j, n2) in g.get_node_iter().enumerate().skip(i + 1) {
-                        let (s_e_f, el_ke_s) = self.electric_repulsion(n1, n2);
-                        e_f[0] += s_e_f[0].clamp(-self.max_force, self.max_force);
-                        e_f[1] += s_e_f[1].clamp(-self.max_force, self.max_force);
-                        f_list[j][0] -= s_e_f[0].clamp(-self.max_force, self.max_force);
-                        f_list[j][1] -= s_e_f[1].clamp(-self.max_force, self.max_force);
-                        el_ke += el_ke_s;
-                    }
-                }
+        println!("START111");
+        self.clone()
+            .calculate_physics(Arc::clone(&g_arc), Arc::clone(&f_list));
 
-                let mut grav_f = [0.0, 0.0];
-                if self.gravity {
-                    grav_f = self.center_grav(g, n1);
-                }
-                e_f[0] += grav_f[0];
-                e_f[1] += grav_f[1];
-
-                f_list[i][0] += e_f[0];
-                f_list[i][1] += e_f[1];
-            }
-        }
-
-        let mut s_ke = 0.0;
-
-        if self.spring {
-            s_ke = self.spring_force(g, &mut f_list);
-        }
-
-        self.update_node_position(g, &f_list);
+        println!("1111");
+        self.update_node_position(Arc::clone(&g_arc), Arc::clone(&f_list));
+        println!("EDND1111");
         //println!("Energy: {}J", self.get_kinetic_energy(g) + s_ke);
         //println!("K Energy: {}J", self.get_kinetic_energy(g));
         //println!("SPR Energy: {}J", s_ke);
     }
 
-    fn update_node_position<T>(&self, g: &mut Graph<T>, f_list: &Vec<[f64; 2]>)
+    fn calculate_physics<T>(self, grrr: Arc<Mutex<Graph<T>>>, f_list: Arc<Mutex<Vec<[f64; 2]>>>)
     where
-        T: PartialEq,
+        T: PartialEq + Send + Sync + 'static + Clone,
     {
-        for (i, n1) in g.get_node_mut_iter().enumerate() {
-            let mut node_force: [f64; 2] = f_list[i];
+        let mut el_ke: f64 = 0.0;
+        let self_arc = Arc::new(self);
+        if self_arc.electric_repulsion || self_arc.gravity {
+            let g_arc_clone = Arc::clone(&grrr);
+            let g_mutx = g_arc_clone.lock().unwrap();
+            let n_count = g_mutx.get_node_count();
+            drop(g_mutx);
+
+            let thread_count = 1;
+            let mut handles = vec![];
+
+            let nodes_p_thread = n_count / thread_count;
+
+            for thread in 0..thread_count {
+                let mut extra = 0;
+
+                if thread == thread_count - 1 {
+                    extra = n_count % thread_count;
+                }
+                let list_arc = Arc::clone(&f_list);
+                let g_arc_clone = Arc::clone(&grrr);
+                let local_self = Arc::clone(&self_arc);
+
+                let handle = thread::spawn(move || {
+                    for i in (thread * nodes_p_thread)..((thread + 1) * nodes_p_thread + extra) {
+                        let g_mutx = g_arc_clone.lock().unwrap();
+                        let n1 = g_mutx.get_node_by_index(i).clone();
+                        drop(g_mutx);
+                        let mut j_force_list: Vec<(usize, [f64; 2])> = Vec::new();
+
+                        let mut e_f: [f64; 2] = [0.0, 0.0];
+                        if local_self.electric_repulsion {
+                            for j in (i + 1)..n_count {
+                                let g_mutx = g_arc_clone.lock().unwrap();
+                                let n2 = g_mutx.get_node_by_index(j).clone();
+                                drop(g_mutx);
+                                let (s_e_f, el_ke_s) = local_self.electric_repulsion(&n1, &n2);
+                                e_f[0] +=
+                                    s_e_f[0].clamp(-local_self.max_force, local_self.max_force);
+                                e_f[1] +=
+                                    s_e_f[1].clamp(-local_self.max_force, local_self.max_force);
+                                let mut j_force = [0.0, 0.0];
+                                j_force[0] -=
+                                    s_e_f[0].clamp(-local_self.max_force, local_self.max_force);
+                                j_force[1] -=
+                                    s_e_f[1].clamp(-local_self.max_force, local_self.max_force);
+                                j_force_list.push((j, j_force));
+
+                                el_ke += el_ke_s;
+                            }
+                        }
+
+                        let mut grav_f = [0.0, 0.0];
+                        if local_self.gravity {
+                            grav_f = local_self.center_grav(&n1);
+                        }
+                        e_f[0] += grav_f[0];
+                        e_f[1] += grav_f[1];
+
+                        let mut l = list_arc.lock().unwrap();
+
+                        l[i][0] += e_f[0];
+                        l[i][1] += e_f[1];
+                        for j_force in j_force_list {
+                            l[j_force.0][0] -= j_force.1[0];
+                            l[j_force.0][1] -= j_force.1[1];
+                        }
+                    }
+                });
+                handles.push(handle);
+            }
+
+            for handle in handles {
+                handle.join().unwrap();
+            }
+        }
+
+        let mut s_ke = 0.0;
+
+        if self_arc.spring {
+            s_ke = self_arc.spring_force(Arc::clone(&grrr), Arc::clone(&f_list));
+        }
+    }
+
+    fn update_node_position<T>(
+        &self,
+        g: Arc<Mutex<Graph<T>>>,
+        f_list_arc: Arc<Mutex<Vec<[f64; 2]>>>,
+    ) where
+        T: PartialEq + Clone,
+    {
+        let mut mutex = g.lock().unwrap();
+        let f_list = f_list_arc.lock().unwrap();
+        for (i, n1) in mutex.get_node_mut_iter().enumerate() {
+            let node_force: [f64; 2] = f_list[i];
 
             if f_list[i][0].is_finite() {
                 n1.speed[0] +=
@@ -92,7 +182,7 @@ impl SimGraph {
             }
         }
 
-        'damping: for n in g.get_node_mut_iter() {
+        'damping: for n in mutex.get_node_mut_iter() {
             if n.fixed {
                 n.speed[0] = 0.0;
                 n.speed[1] = 0.0;
@@ -107,12 +197,13 @@ impl SimGraph {
         }
     }
 
-    fn get_kinetic_energy<T>(&self, g: &mut Graph<T>) -> f64
+    fn get_kinetic_energy<T>(&self, g: Arc<Mutex<Graph<T>>>) -> f64
     where
-        T: PartialEq,
+        T: PartialEq + Clone,
     {
         let mut ke = 0.0;
-        for n in g.get_node_iter() {
+        let mutex = g.lock().unwrap();
+        for n in mutex.get_node_iter() {
             ke += 0.5 * n.speed[0].powi(2) * n.mass;
             ke += 0.5 * n.speed[1].powi(2) * n.mass;
         }
@@ -142,14 +233,16 @@ impl SimGraph {
         ((n2[0] - n1[0]), (n2[1] - n1[1]))
     }
 
-    fn spring_force<T>(&self, g: &Graph<T>, forcelist: &mut Vec<[f64; 2]>) -> f64
+    fn spring_force<T>(&self, g: Arc<Mutex<Graph<T>>>, f_list_arc: Arc<Mutex<Vec<[f64; 2]>>>) -> f64
     where
-        T: PartialEq,
+        T: PartialEq + Clone,
     {
+        let g_mutx = g.lock().unwrap();
+        let mut forcelist = f_list_arc.lock().unwrap();
         let mut ke = 0.0;
-        for (i, edge) in g.get_edge_iter().enumerate() {
-            let n1 = g.get_node_by_index(edge.0);
-            let n2 = g.get_node_by_index(edge.1);
+        for (i, edge) in g_mutx.get_edge_iter().enumerate() {
+            let n1 = g_mutx.get_node_by_index(edge.0);
+            let n2 = g_mutx.get_node_by_index(edge.1);
             let vec = Self::calc_dir_vec(n1, n2);
 
             let dist = Self::calc_dist(n1, n2);
@@ -203,12 +296,10 @@ impl SimGraph {
         (force, ke)
     }
 
-    fn center_grav<T>(&self, g: &Graph<T>, n1: &Node<T>) -> [f64; 2]
+    fn center_grav<T>(&self, n1: &Node<T>) -> [f64; 2]
     where
         T: PartialEq,
     {
-        let avg_pos = g.avg_pos();
-        let d = Self::calc_dist_x_y(&n1.position, &avg_pos);
         [
             self.f2c * (-n1.position[0]).signum().signum(),
             self.f2c * (-n1.position[1]).signum().signum(),

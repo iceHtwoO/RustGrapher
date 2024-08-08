@@ -12,7 +12,10 @@ use serde::Deserialize;
 use std::fs::File;
 use std::io::BufReader;
 use std::io::Error;
+use std::sync::Arc;
+use std::sync::Mutex;
 
+#[derive(Clone)]
 struct Data {
     name: String,
 }
@@ -41,7 +44,7 @@ fn main() {
     graph_wiki(&mut g);
 
     g.change_mass_based_on_incoming();
-    let mut datavis = datavis::DataVis::new(&mut g);
+    let mut datavis = datavis::DataVis::new(g);
     datavis.create_window(&update);
 }
 
@@ -93,7 +96,7 @@ fn rand_graph(mut g: &mut Graph<Data>) {
     g.add_edge(0, 1, 1);
 }
 
-fn update(graph: &mut Graph<Data>, fps: u128) {
+fn update(graph: Arc<Mutex<Graph<Data>>>, fps: u128) {
     let time = 1.0 / fps as f32; // 0.1s
 }
 

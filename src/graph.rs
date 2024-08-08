@@ -1,10 +1,12 @@
 use std::{
+    clone,
     slice::{Iter, IterMut},
     vec,
 };
 
 use rand::Rng;
 
+#[derive(Debug)]
 pub enum GraphType {
     Directed,
     Undirected,
@@ -12,6 +14,7 @@ pub enum GraphType {
 
 type DefaultIndex = usize;
 
+#[derive(Debug, Clone)]
 pub struct Node<T>
 where
     T: PartialEq,
@@ -50,11 +53,13 @@ where
         }
     }
 }
+#[derive(Debug)]
 pub struct Edge(pub DefaultIndex, pub DefaultIndex, u64);
 
+#[derive(Debug)]
 pub struct Graph<T>
 where
-    T: PartialEq,
+    T: PartialEq + Clone,
 {
     nodes: Vec<Node<T>>,
     edges: Vec<Edge>,
@@ -64,7 +69,7 @@ where
 
 impl<T> Graph<T>
 where
-    T: PartialEq,
+    T: PartialEq + Clone,
 {
     pub fn new() -> Self {
         Self {

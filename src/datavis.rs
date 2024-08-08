@@ -1,6 +1,7 @@
 use core::f64;
 use std::{
     f64::{consts::PI, INFINITY},
+    sync::{Arc, Mutex},
     time::{Instant, SystemTime, UNIX_EPOCH},
 };
 
@@ -44,26 +45,26 @@ struct Vertex {
 }
 implement_vertex!(Vertex, position, color);
 
-pub struct DataVis<'a, T>
+pub struct DataVis<T>
 where
-    T: PartialEq,
+    T: PartialEq + Send + Sync + 'static + Clone,
 {
-    graph: &'a mut Graph<T>,
+    graph: Arc<Mutex<Graph<T>>>,
     sim: SimGraph,
 }
 
-impl<'a, T> DataVis<'a, T>
+impl<T> DataVis<T>
 where
-    T: PartialEq,
+    T: PartialEq + Send + Sync + 'static + Clone,
 {
-    pub fn new(graph: &'a mut Graph<T>) -> Self {
+    pub fn new(graph: Graph<T>) -> Self {
         Self {
-            graph,
+            graph: Arc::new(Mutex::new(graph)),
             sim: SimGraph::new(),
         }
     }
 
-    pub fn create_window<'b>(&mut self, update: &dyn Fn(&mut Graph<T>, u128)) {
+    pub fn create_window<'b>(&mut self, update: &dyn Fn(Arc<Mutex<Graph<T>>>, u128)) {
         let mut lastfps = 0;
 
         let mut event_loop = winit::event_loop::EventLoopBuilder::new().build();
@@ -102,10 +103,14 @@ where
                 _ => (),
             }
 
-            update(self.graph, fps);
-            self.sim.sim(self.graph, fps);
+            update(Arc::clone(&self.graph), fps);
+
+            self.sim.clone().sim(Arc::clone(&self.graph), fps);
+            println!("FIN");
             if last_redraw.elapsed().as_millis() >= 17 {
+                println!("DRAW");
                 self.draw_graph(&display, &scroll_scale);
+                println!("DRAW DONE");
                 println!("FPS{}", (fps + lastfps) / 2);
                 last_redraw = Instant::now();
             }
@@ -120,10 +125,12 @@ where
 
         let mut max: f64 = -INFINITY;
         let mut min: f64 = INFINITY;
-        let avg_pos = self.graph.avg_pos();
-        for (i, n) in self.graph.get_node_iter().enumerate() {
+        println!("GET LOCK");
+        let mutex = self.graph.lock().unwrap();
+        println!("GOT LOCK");
+        let avg_pos = mutex.avg_pos();
+        for (i, n) in mutex.get_node_iter().enumerate() {
             max = max.max(n.position[0]);
-
             min = min.min(n.position[0]);
         }
 
@@ -132,12 +139,16 @@ where
         //println!("SCALE{}", 2.0 / scale);
 
         let mut max_m = 0.0;
-        for n in self.graph.get_node_iter() {
+        for n in mutex.get_node_iter() {
             max_m = n.mass.max(max_m);
         }
+        drop(mutex);
 
+        println!("EDGE");
         self.draw_edge(&mut target, display, &scale, &max_m, &avg_pos);
+        println!("NODE");
         self.draw_node(&mut target, display, &scale, &max_m, &avg_pos);
+        println!("DONE DRAW");
 
         target.finish().unwrap();
 
@@ -163,9 +174,11 @@ where
 
         let mut shape: Vec<Vertex> = vec![];
 
-        for edge in self.graph.get_edge_iter() {
-            let n1 = self.graph.get_node_by_index(edge.0);
-            let n2 = self.graph.get_node_by_index(edge.1);
+        let graph_mutex = self.graph.lock().unwrap();
+
+        for edge in graph_mutex.get_edge_iter() {
+            let n1 = graph_mutex.get_node_by_index(edge.0);
+            let n2 = graph_mutex.get_node_by_index(edge.1);
             let p1 = [
                 (n1.position[0] - avg[0]) * scale,
                 (n1.position[1] - avg[1]) * scale,
@@ -226,7 +239,9 @@ where
 
         let mut shape: Vec<Vertex> = vec![];
 
-        for (e, node) in self.graph.get_node_iter().enumerate() {
+        let graph_mutex = self.graph.lock().unwrap();
+
+        for (e, node) in graph_mutex.get_node_iter().enumerate() {
             let mut pos = node.position;
             let r = (f64::sqrt(node.mass * PI) * scale) * 0.1;
 
