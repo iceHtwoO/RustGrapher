@@ -15,7 +15,7 @@ use std::io::Error;
 use std::sync::Arc;
 use std::sync::Mutex;
 
-#[derive(Clone)]
+#[derive(Clone, Debug, Default)]
 struct Data {
     name: String,
 }
@@ -44,36 +44,36 @@ fn main() {
     graph_wiki(&mut g);
 
     g.change_mass_based_on_incoming();
-    let mut datavis = datavis::DataVis::new(g);
-    datavis.create_window(&update);
+    let mut datavis = datavis::DataVis::new();
+    datavis.create_window(g);
 }
 
-fn graph_wiki(mut g: &mut Graph<Data>) {
+fn graph_wiki(g: &mut Graph<Data>) {
     if let Ok(w) = load_wiki() {
         for e in w {
             println!("Node Count:{}", g.get_node_count());
-            if (g.get_node_count() > 10000) {
+            if (g.get_node_count() > 1000) {
                 break;
             }
             let node_data = Data::new(e.title);
             let opt = g.contains_node(&node_data);
-            let mut index = 0;
+            let mut _index = 0;
             if opt.is_none() {
-                index = g.add_node(node_data);
+                _index = g.add_node(node_data);
             } else {
-                index = opt.unwrap();
+                _index = opt.unwrap();
             }
 
             for r in e.references {
                 let ref_data = Data::new(r);
                 let opt_ref = g.contains_node(&ref_data);
-                let mut index_ref = 0;
+                let mut _index_ref = 0;
                 if opt_ref.is_none() {
-                    index_ref = g.add_node(ref_data);
+                    _index_ref = g.add_node(ref_data);
                 } else {
-                    index_ref = opt_ref.unwrap();
+                    _index_ref = opt_ref.unwrap();
                 }
-                g.add_edge(index, index_ref, 1);
+                g.add_edge(_index, _index_ref, 1);
             }
         }
     }
@@ -90,14 +90,10 @@ fn load_wiki() -> Result<Vec<WikiEntry>, Error> {
     Ok(wiki)
 }
 
-fn rand_graph(mut g: &mut Graph<Data>) {
+fn rand_graph(g: &mut Graph<Data>) {
     g.add_node_pos(Data::new("x".to_string()), [0.0, 0.0], true, 5.0);
     g.add_node_pos(Data::new("y".to_string()), [-10.0, 0.0], false, 5.0);
     g.add_edge(0, 1, 1);
-}
-
-fn update(graph: Arc<Mutex<Graph<Data>>>, fps: u128) {
-    let time = 1.0 / fps as f32; // 0.1s
 }
 
 fn add_random_edge(graph: &mut Graph<Data>) {

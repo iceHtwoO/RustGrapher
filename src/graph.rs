@@ -4,12 +4,19 @@ use std::{
     vec,
 };
 
+use plotly::{Plot, Scatter};
 use rand::Rng;
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum GraphType {
     Directed,
     Undirected,
+}
+
+impl Default for GraphType {
+    fn default() -> Self {
+        GraphType::Undirected
+    }
 }
 
 type DefaultIndex = usize;
@@ -53,10 +60,10 @@ where
         }
     }
 }
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct Edge(pub DefaultIndex, pub DefaultIndex, u64);
 
-#[derive(Debug)]
+#[derive(Debug, Clone, Default)]
 pub struct Graph<T>
 where
     T: PartialEq + Clone,

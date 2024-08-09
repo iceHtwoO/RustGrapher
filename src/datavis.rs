@@ -1,6 +1,8 @@
 use core::f64;
 use std::{
     f64::{consts::PI, INFINITY},
+    fmt::Debug,
+    marker::PhantomData,
     sync::{Arc, Mutex},
     time::{Instant, SystemTime, UNIX_EPOCH},
 };
@@ -8,12 +10,15 @@ use std::{
 use crate::{simgraph::SimGraph, Graph};
 use glium::{glutin::surface::WindowSurface, implement_vertex, Display, Frame, Surface};
 
+use plotly::{layout::Axis, Layout, Plot, Scatter};
 use rand::{rngs::StdRng, Rng, SeedableRng};
 use winit::{
     event::{Event, WindowEvent},
-    event_loop::{self, ControlFlow},
+    event_loop::{self, ControlFlow, EventLoop},
     platform::run_return::EventLoopExtRunReturn,
 };
+
+mod shapes;
 
 static VERTEX_SHADER_SRC: &str = r#"
 #version 140
@@ -43,39 +48,54 @@ struct Vertex {
     position: [f64; 2],
     color: [f32; 4],
 }
+
+struct Energy {
+    kinetic: f64,
+    spring: f64,
+}
+
 implement_vertex!(Vertex, position, color);
 
 pub struct DataVis<T>
 where
     T: PartialEq + Send + Sync + 'static + Clone,
 {
-    graph: Arc<Mutex<Graph<T>>>,
     sim: SimGraph,
+    phantom: PhantomData<T>,
+    energy: Vec<Energy>,
 }
 
 impl<T> DataVis<T>
 where
-    T: PartialEq + Send + Sync + 'static + Clone,
+    T: PartialEq + Send + Sync + 'static + Clone + Debug + Default,
 {
-    pub fn new(graph: Graph<T>) -> Self {
+    pub fn new() -> Self {
         Self {
-            graph: Arc::new(Mutex::new(graph)),
             sim: SimGraph::new(),
+            phantom: PhantomData,
+            energy: vec![],
         }
     }
 
-    pub fn create_window<'b>(&mut self, update: &dyn Fn(Arc<Mutex<Graph<T>>>, u128)) {
-        let mut lastfps = 0;
-
+    pub fn create_window(&mut self, g: Graph<T>) {
         let mut event_loop = winit::event_loop::EventLoopBuilder::new().build();
 
         let (window, display) =
             glium::backend::glutin::SimpleWindowBuilder::new().build(&event_loop);
 
+        self.run_render_loop(g, event_loop, &display);
+    }
+
+    fn run_render_loop(
+        &mut self,
+        mut graph: Graph<T>,
+        mut event_loop: EventLoop<()>,
+        display: &Display<WindowSurface>,
+    ) {
         let mut now = Instant::now();
         let mut last_redraw = Instant::now();
-
         let mut scroll_scale: f64 = 1.0;
+        let mut lastfps = 0;
 
         event_loop.run_return(|event, _, control_flow| {
             *control_flow = ControlFlow::Poll;
@@ -103,14 +123,19 @@ where
                 _ => (),
             }
 
-            update(Arc::clone(&self.graph), fps);
+            let mut g_taken = std::mem::take(&mut graph);
+            (self.sim, g_taken) = self.sim.clone().sim(g_taken, fps);
+            graph = g_taken;
 
-            self.sim.clone().sim(Arc::clone(&self.graph), fps);
-            println!("FIN");
+            self.energy.push(Energy {
+                kinetic: self.sim.kinetic_energy,
+                spring: self.sim.spring_energy,
+            });
+
+            self.plot_data();
+
             if last_redraw.elapsed().as_millis() >= 17 {
-                println!("DRAW");
-                self.draw_graph(&display, &scroll_scale);
-                println!("DRAW DONE");
+                self.draw_graph(&display, &graph, &scroll_scale);
                 println!("FPS{}", (fps + lastfps) / 2);
                 last_redraw = Instant::now();
             }
@@ -119,49 +144,33 @@ where
         });
     }
 
-    fn draw_graph(&mut self, display: &Display<WindowSurface>, scroll_scale: &f64) {
+    fn draw_graph(&mut self, display: &Display<WindowSurface>, g: &Graph<T>, scroll_scale: &f64) {
         let mut target = display.draw();
         target.clear_color(1.0, 1.0, 1.0, 1.0);
 
         let mut max: f64 = -INFINITY;
         let mut min: f64 = INFINITY;
-        println!("GET LOCK");
-        let mutex = self.graph.lock().unwrap();
-        println!("GOT LOCK");
-        let avg_pos = mutex.avg_pos();
-        for (i, n) in mutex.get_node_iter().enumerate() {
+        let avg_pos = g.avg_pos();
+        for n in g.get_node_iter() {
             max = max.max(n.position[0]);
             min = min.min(n.position[0]);
         }
 
-        let scale = 2.0 / (((max - min).abs()).max(100.0) + 0.01) + 0.001;
-
-        //println!("SCALE{}", 2.0 / scale);
+        let scale = 2.0 / (((max - min).abs()).max(100.0) + 0.01 + scroll_scale);
 
         let mut max_m = 0.0;
-        for n in mutex.get_node_iter() {
+        for n in g.get_node_iter() {
             max_m = n.mass.max(max_m);
         }
-        drop(mutex);
-
-        println!("EDGE");
-        self.draw_edge(&mut target, display, &scale, &max_m, &avg_pos);
-        println!("NODE");
-        self.draw_node(&mut target, display, &scale, &max_m, &avg_pos);
-        println!("DONE DRAW");
+        self.draw_edge(g, &mut target, display, &scale, &max_m, &avg_pos);
+        self.draw_node(g, &mut target, display, &scale, &max_m, &avg_pos);
 
         target.finish().unwrap();
-
-        let image: glium::texture::RawImage2d<'_, u8> = display.read_front_buffer().unwrap();
-        let image =
-            image::ImageBuffer::from_raw(image.width, image.height, image.data.into_owned())
-                .unwrap();
-        let image = image::DynamicImage::ImageRgba8(image).into_rgba16();
-        image.save("glium-example-screenshot.png").unwrap();
     }
 
     fn draw_edge(
         &self,
+        g: &Graph<T>,
         target: &mut Frame,
         display: &Display<WindowSurface>,
         scale: &f64,
@@ -174,11 +183,9 @@ where
 
         let mut shape: Vec<Vertex> = vec![];
 
-        let graph_mutex = self.graph.lock().unwrap();
-
-        for edge in graph_mutex.get_edge_iter() {
-            let n1 = graph_mutex.get_node_by_index(edge.0);
-            let n2 = graph_mutex.get_node_by_index(edge.1);
+        for edge in g.get_edge_iter() {
+            let n1 = g.get_node_by_index(edge.0);
+            let n2 = g.get_node_by_index(edge.1);
             let p1 = [
                 (n1.position[0] - avg[0]) * scale,
                 (n1.position[1] - avg[1]) * scale,
@@ -189,26 +196,14 @@ where
             ];
 
             let min_m = n1.mass.min(n2.mass);
+            let color = [
+                1.0,
+                1.0 - (min_m / max_m) as f32 * 6.0,
+                1.0 - (min_m / max_m) as f32 * 6.0,
+                (min_m / max_m) as f32,
+            ];
 
-            shape.push(Vertex {
-                position: p1,
-                color: [
-                    1.0,
-                    1.0 - (min_m / max_m) as f32 * 6.0,
-                    1.0 - (min_m / max_m) as f32 * 6.0,
-                    (min_m / max_m) as f32,
-                ],
-            });
-
-            shape.push(Vertex {
-                position: p2,
-                color: [
-                    1.0,
-                    1.0 - (min_m / max_m) as f32 * 6.0,
-                    1.0 - (min_m / max_m) as f32 * 6.0,
-                    (min_m / max_m) as f32,
-                ],
-            });
+            shape.append(&mut shapes::line(p1, p2, color));
         }
 
         let vertex_buffer = glium::VertexBuffer::new(display, &shape).unwrap();
@@ -227,6 +222,7 @@ where
 
     fn draw_node(
         &self,
+        g: &Graph<T>,
         target: &mut Frame,
         display: &Display<WindowSurface>,
         scale: &f64,
@@ -239,9 +235,7 @@ where
 
         let mut shape: Vec<Vertex> = vec![];
 
-        let graph_mutex = self.graph.lock().unwrap();
-
-        for (e, node) in graph_mutex.get_node_iter().enumerate() {
+        for (e, node) in g.get_node_iter().enumerate() {
             let mut pos = node.position;
             let r = (f64::sqrt(node.mass * PI) * scale) * 0.1;
 
@@ -258,8 +252,8 @@ where
                 (rand.gen_range(0..=100) as f32) / 100.0,
                 (node.mass / max_m) as f32,
             ];
-            let mut v = create_circle(pos, color, r, 30);
-            shape.append(&mut v);
+
+            shape.append(&mut shapes::create_circle(pos, color, r, 30));
         }
 
         let vertex_buffer = glium::VertexBuffer::new(display, &shape).unwrap();
@@ -275,66 +269,35 @@ where
             )
             .unwrap();
     }
-}
 
-fn create_cube(pos: [f64; 2], color: [f32; 4], s: f64) -> Vec<Vertex> {
-    let mut shape = Vec::with_capacity(6);
-    shape.push(Vertex {
-        position: [pos[0] - s, pos[1] - s],
-        color,
-    });
+    pub fn plot_data(&self) {
+        let mut x_axis = Vec::with_capacity(self.energy.len());
+        let mut k_energy = Vec::with_capacity(self.energy.len());
+        let mut s_energy = Vec::with_capacity(self.energy.len());
+        for (i, e) in self.energy.iter().enumerate() {
+            x_axis.push(i);
+            k_energy.push(e.kinetic);
+            s_energy.push(e.spring);
+        }
 
-    shape.push(Vertex {
-        position: [pos[0] + s, pos[1] - s],
-        color,
-    });
+        let mut plot = Plot::new();
+        plot.set_layout(
+            Layout::new()
+                .x_axis(Axis::new().title("Frame"))
+                .y_axis(Axis::new().title("J")),
+        );
 
-    shape.push(Vertex {
-        position: [pos[0] - s, pos[1] + s],
-        color,
-    });
-    shape.push(Vertex {
-        position: [pos[0] + s, pos[1] + s],
-        color,
-    });
+        let k_trace = Scatter::new(x_axis.clone(), k_energy)
+            .connect_gaps(true)
+            .name("Kinetic energy");
 
-    shape.push(Vertex {
-        position: [pos[0] + s, pos[1] - s],
-        color,
-    });
+        let s_trace = Scatter::new(x_axis, s_energy)
+            .connect_gaps(true)
+            .name("Spring energy");
 
-    shape.push(Vertex {
-        position: [pos[0] - s, pos[1] + s],
-        color,
-    });
-    shape
-}
+        plot.add_trace(k_trace);
+        plot.add_trace(s_trace);
 
-fn create_circle(pos: [f64; 2], color: [f32; 4], r: f64, res: usize) -> Vec<Vertex> {
-    let mut shape = Vec::with_capacity(3 * res);
-    let a = 2.0 * PI / res as f64;
-
-    for i in 0..res {
-        let i = i as f64;
-        shape.push(Vertex {
-            position: pos,
-            color,
-        });
-        shape.push(Vertex {
-            position: [
-                pos[0] + (r * f64::sin(a * i)),
-                pos[1] + (r * f64::cos(a * i)),
-            ],
-            color,
-        });
-        shape.push(Vertex {
-            position: [
-                pos[0] + (r * f64::sin(a * (i + 1.0))),
-                pos[1] + (r * f64::cos(a * (i + 1.0))),
-            ],
-            color,
-        });
+        plot.write_html("out.html");
     }
-
-    shape
 }
