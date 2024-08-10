@@ -2,7 +2,7 @@ use std::f32::consts::PI;
 
 use super::Vertex;
 
-pub fn create_cube(pos: [f32; 2], color: [f32; 4], s: f32) -> Vec<Vertex> {
+pub fn cube(pos: [f32; 2], color: [f32; 4], s: f32) -> Vec<Vertex> {
     let mut shape = Vec::with_capacity(6);
     shape.push(Vertex {
         position: [pos[0] - s, pos[1] - s],
@@ -35,7 +35,7 @@ pub fn create_cube(pos: [f32; 2], color: [f32; 4], s: f32) -> Vec<Vertex> {
     shape
 }
 
-pub fn create_circle(pos: [f32; 2], color: [f32; 4], r: f32, res: usize) -> Vec<Vertex> {
+pub fn circle(pos: [f32; 2], color: [f32; 4], r: f32, res: usize) -> Vec<Vertex> {
     let mut shape = Vec::with_capacity(3 * res);
     let a = 2.0 * PI / res as f32;
 

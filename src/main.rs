@@ -7,13 +7,10 @@ pub mod simgraph;
 
 use graph::Graph;
 
-use rand::Rng;
 use serde::Deserialize;
 use std::fs::File;
 use std::io::BufReader;
 use std::io::Error;
-use std::sync::Arc;
-use std::sync::Mutex;
 
 #[derive(Clone, Debug, Default)]
 struct Data {
@@ -40,7 +37,6 @@ impl PartialEq for Data {
 
 fn main() {
     let mut g = Graph::<Data>::new();
-    //rand_graph(&mut g);
     graph_wiki(&mut g);
 
     g.change_mass_based_on_incoming();
@@ -83,22 +79,9 @@ fn graph_wiki(g: &mut Graph<Data>) {
 }
 
 fn load_wiki() -> Result<Vec<WikiEntry>, Error> {
-    let file = File::open("references.json")?;
+    let file = File::open("reference.json")?;
     let reader = BufReader::new(file);
 
     let wiki: Vec<WikiEntry> = serde_json::from_reader(reader)?;
     Ok(wiki)
-}
-
-fn rand_graph(g: &mut Graph<Data>) {
-    g.add_node_pos(Data::new("x".to_string()), [0.0, 0.0], true, 5.0);
-    g.add_node_pos(Data::new("y".to_string()), [-10.0, 0.0], false, 5.0);
-    g.add_edge(0, 1, 1);
-}
-
-fn add_random_edge(graph: &mut Graph<Data>) {
-    let c = graph.get_node_count();
-    let start = rand::thread_rng().gen_range(0..c - 1);
-    let end = rand::thread_rng().gen_range(0..c - 1);
-    graph.add_edge(start, end, 1);
 }

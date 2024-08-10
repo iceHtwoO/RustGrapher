@@ -3,8 +3,7 @@ use std::{
     f32::{consts::PI, INFINITY},
     fmt::Debug,
     marker::PhantomData,
-    sync::{Arc, Mutex},
-    time::{Instant, SystemTime, UNIX_EPOCH},
+    time::Instant,
 };
 
 use crate::{simgraph::SimGraph, Graph};
@@ -14,7 +13,7 @@ use plotly::{layout::Axis, Layout, Plot, Scatter};
 use rand::{rngs::StdRng, Rng, SeedableRng};
 use winit::{
     event::{Event, WindowEvent},
-    event_loop::{self, ControlFlow, EventLoop},
+    event_loop::{ControlFlow, EventLoop},
     platform::run_return::EventLoopExtRunReturn,
 };
 
@@ -126,7 +125,7 @@ where
             }
 
             let mut g_taken = std::mem::take(&mut graph);
-            (self.sim, g_taken) = self.sim.clone().sim(g_taken, fps);
+            (self.sim, g_taken) = self.sim.clone().sim(g_taken);
             graph = g_taken;
 
             self.energy.push(Energy {
@@ -257,7 +256,7 @@ where
                 (node.mass / max_m) as f32,
             ];
 
-            shape.append(&mut shapes::create_circle(pos, color, r, 30));
+            shape.append(&mut shapes::circle(pos, color, r, 30));
         }
 
         let vertex_buffer = glium::VertexBuffer::new(display, &shape).unwrap();

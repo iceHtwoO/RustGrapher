@@ -1,10 +1,8 @@
 use core::panic;
 use std::{
     fmt::Debug,
-    ops::Add,
     sync::{Arc, Mutex},
     thread::{self, JoinHandle},
-    time::{Duration, Instant},
 };
 
 use crate::graph::{Graph, Node};
@@ -51,11 +49,7 @@ impl SimGraph {
         }
     }
 
-    fn system_energy(&self) -> f32 {
-        self.kinetic_energy + self.spring_energy + self.repulsion_energy + self.pot_energy
-    }
-
-    pub fn sim<T>(mut self, g: Graph<T>, fps: u128) -> (Self, Graph<T>)
+    pub fn sim<T>(mut self, g: Graph<T>) -> (Self, Graph<T>)
     where
         T: PartialEq + Send + Sync + 'static + Clone + Debug,
     {
@@ -78,7 +72,7 @@ impl SimGraph {
     {
         // Try to unwrap the Arc, consuming it if it's the only reference
         let value = Arc::try_unwrap(arc);
-        if let Err(x) = value {
+        if let Err(_) = value {
             panic!();
         }
 
@@ -122,7 +116,6 @@ impl SimGraph {
                     Arc::clone(&grrr),
                     Arc::clone(&self_arc),
                     Arc::clone(&electric_energy),
-                    thread,
                 );
 
                 handles.push(handle);
@@ -165,7 +158,6 @@ impl SimGraph {
         g_arc: Arc<Graph<T>>,
         self_arc: Arc<Self>,
         elec_energy: Arc<Mutex<f32>>,
-        thread: usize,
     ) -> JoinHandle<()>
     where
         T: PartialEq + Send + Sync + 'static + Clone,
@@ -293,7 +285,7 @@ impl SimGraph {
     {
         let mut forcelist = f_list_arc.lock().unwrap();
         let mut ke = 0.0;
-        for (i, edge) in g.get_edge_iter().enumerate() {
+        for edge in g.get_edge_iter() {
             let n1 = g.get_node_by_index(edge.0);
             let n2 = g.get_node_by_index(edge.1);
             let vec = Self::calc_dir_vec(n1, n2);
