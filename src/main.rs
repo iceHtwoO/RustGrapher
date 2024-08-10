@@ -52,7 +52,7 @@ fn graph_wiki(g: &mut Graph<Data>) {
     if let Ok(w) = load_wiki() {
         for e in w {
             println!("Node Count:{}", g.get_node_count());
-            if (g.get_node_count() > 1000000) {
+            if (g.get_node_count() > 2000) {
                 break;
             }
             let node_data = Data::new(e.title);

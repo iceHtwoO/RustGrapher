@@ -2,4 +2,4 @@
 *.png
 *.html
 .vscode/
-references.json
+*.json
