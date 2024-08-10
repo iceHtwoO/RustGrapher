@@ -1,26 +1,32 @@
 use core::panic;
 use std::{
     fmt::Debug,
+    ops::Add,
     sync::{Arc, Mutex},
     thread::{self, JoinHandle},
+    time::{Duration, Instant},
 };
 
 use crate::graph::{Graph, Node};
 
 #[derive(Clone, Debug)]
 pub struct SimGraph {
-    spring_stiffness: f64,
-    spring_default_len: f64,
-    s_per_update: f64,
-    f2c: f64,
+    spring_stiffness: f32,
+    spring_default_len: f32,
+    s_per_update: f32,
+    f2c: f32,
     electric_repulsion: bool,
-    electric_repulsion_const: f64,
+    electric_repulsion_const: f32,
     spring: bool,
     gravity: bool,
-    damping: f64,
-    max_force: f64,
-    pub kinetic_energy: f64,
-    pub spring_energy: f64,
+    damping: f32,
+    max_force: f32,
+    pub kinetic_energy: f32,
+    pub spring_energy: f32,
+    pub repulsion_energy: f32,
+    pub pot_energy: f32,
+    e_range: f32,
+    iteration: u32,
 }
 
 impl SimGraph {
@@ -28,8 +34,8 @@ impl SimGraph {
         Self {
             spring_stiffness: 10.0,
             spring_default_len: 0.0,
-            s_per_update: 0.005,
-            f2c: 10.0,
+            s_per_update: 0.05,
+            f2c: 1.0,
             electric_repulsion: true,
             electric_repulsion_const: 5.5,
             spring: true,
@@ -38,7 +44,15 @@ impl SimGraph {
             max_force: 100.0,
             kinetic_energy: 0.0,
             spring_energy: 0.0,
+            repulsion_energy: 0.0,
+            e_range: 60.0,
+            pot_energy: 0.0,
+            iteration: 0,
         }
+    }
+
+    fn system_energy(&self) -> f32 {
+        self.kinetic_energy + self.spring_energy + self.repulsion_energy + self.pot_energy
     }
 
     pub fn sim<T>(mut self, g: Graph<T>, fps: u128) -> (Self, Graph<T>)
@@ -78,11 +92,12 @@ impl SimGraph {
     fn calculate_physics<T>(
         mut self,
         grrr: Arc<Graph<T>>,
-        f_list: Arc<Mutex<Vec<[f64; 2]>>>,
+        f_list: Arc<Mutex<Vec<[f32; 2]>>>,
     ) -> Self
     where
         T: PartialEq + Send + Sync + 'static + Clone,
     {
+        let electric_energy = Arc::new(Mutex::new(0.0));
         let self_arc = Arc::new(self);
         if self_arc.electric_repulsion || self_arc.gravity {
             let n_count = grrr.get_node_count();
@@ -106,6 +121,8 @@ impl SimGraph {
                     Arc::clone(&f_list),
                     Arc::clone(&grrr),
                     Arc::clone(&self_arc),
+                    Arc::clone(&electric_energy),
+                    thread,
                 );
 
                 handles.push(handle);
@@ -118,10 +135,24 @@ impl SimGraph {
 
         self = Arc::try_unwrap(self_arc).unwrap();
 
+        let e_mutex = electric_energy.lock().unwrap();
+        self.repulsion_energy = *e_mutex;
+
+        if self.gravity {
+            self.pot_energy = 0.0;
+            for n in grrr.get_node_iter() {
+                let dist = Self::calc_dist_to_center(n);
+                self.pot_energy += n.mass * self.f2c * dist;
+            }
+        }
+
         if self.spring {
             let s_ke = self.spring_force(Arc::clone(&grrr), Arc::clone(&f_list));
             self.spring_energy = s_ke;
         }
+
+        self.iteration += 1;
+
         self
     }
 
@@ -130,48 +161,53 @@ impl SimGraph {
         start_index: usize,
         end_index: usize,
         n_count: usize,
-        list_arc: Arc<Mutex<Vec<[f64; 2]>>>,
+        list_arc: Arc<Mutex<Vec<[f32; 2]>>>,
         g_arc: Arc<Graph<T>>,
         self_arc: Arc<Self>,
+        elec_energy: Arc<Mutex<f32>>,
+        thread: usize,
     ) -> JoinHandle<()>
     where
         T: PartialEq + Send + Sync + 'static + Clone,
     {
         let handle = thread::spawn(move || {
+            let mut force_list: Vec<[f32; 2]> = vec![[0.0, 0.0]; n_count];
+            let mut en = 0.0;
+
             for i in start_index..end_index {
                 let n1 = g_arc.get_node_by_index(i);
-                let mut j_force_list: Vec<(usize, [f64; 2])> = Vec::new();
 
-                let mut e_f: [f64; 2] = [0.0, 0.0];
                 if self_arc.electric_repulsion {
                     for j in (i + 1)..n_count {
                         let n2 = g_arc.get_node_by_index(j);
                         let s_e_f = self_arc.electric_repulsion(&n1, &n2);
-                        e_f[0] += s_e_f[0].clamp(-self_arc.max_force, self_arc.max_force);
-                        e_f[1] += s_e_f[1].clamp(-self_arc.max_force, self_arc.max_force);
-                        let mut j_force = [0.0, 0.0];
-                        j_force[0] -= s_e_f[0].clamp(-self_arc.max_force, self_arc.max_force);
-                        j_force[1] -= s_e_f[1].clamp(-self_arc.max_force, self_arc.max_force);
-                        j_force_list.push((j, j_force));
+                        let dist = Self::calc_dist(&n1, &n2);
+
+                        let x_force: f32 = s_e_f[0].clamp(-self_arc.max_force, self_arc.max_force);
+                        let y_force = s_e_f[1].clamp(-self_arc.max_force, self_arc.max_force);
+                        en += x_force.abs() * dist + y_force.abs() * dist;
+                        force_list[i][0] += x_force;
+                        force_list[i][1] += y_force;
+                        force_list[j][0] -= x_force;
+                        force_list[j][1] -= y_force;
                     }
                 }
 
-                let mut grav_f = [0.0, 0.0];
                 if self_arc.gravity {
-                    grav_f = self_arc.center_grav(&n1);
-                }
-                e_f[0] += grav_f[0];
-                e_f[1] += grav_f[1];
-
-                let mut l = list_arc.lock().unwrap();
-
-                l[i][0] += e_f[0];
-                l[i][1] += e_f[1];
-                for j_force in j_force_list {
-                    l[j_force.0][0] -= j_force.1[0];
-                    l[j_force.0][1] -= j_force.1[1];
+                    let grav_f = self_arc.center_grav(&n1);
+                    force_list[i][0] += grav_f[0];
+                    force_list[i][1] += grav_f[1];
                 }
             }
+            let mut l = list_arc.lock().unwrap();
+
+            for (i, force) in force_list.into_iter().enumerate() {
+                l[i][0] += force[0];
+                l[i][1] += force[1];
+            }
+            drop(l);
+            let mut e_mutex = elec_energy.lock().unwrap();
+            *e_mutex += en;
         });
         handle
     }
@@ -179,14 +215,14 @@ impl SimGraph {
     fn update_node_position<T>(
         &self,
         g: Arc<Mutex<Graph<T>>>,
-        f_list_arc: Arc<Mutex<Vec<[f64; 2]>>>,
+        f_list_arc: Arc<Mutex<Vec<[f32; 2]>>>,
     ) where
         T: PartialEq + Clone,
     {
         let mut mutex = g.lock().unwrap();
         let f_list = f_list_arc.lock().unwrap();
         for (i, n1) in mutex.get_node_mut_iter().enumerate() {
-            let node_force: [f64; 2] = f_list[i];
+            let node_force: [f32; 2] = f_list[i];
 
             if f_list[i][0].is_finite() {
                 n1.speed[0] +=
@@ -213,20 +249,19 @@ impl SimGraph {
         }
     }
 
-    fn get_kinetic_energy<T>(&self, g: Arc<Mutex<Graph<T>>>) -> f64
+    fn get_kinetic_energy<T>(&self, g: Arc<Mutex<Graph<T>>>) -> f32
     where
         T: PartialEq + Clone,
     {
         let mut ke = 0.0;
         let mutex = g.lock().unwrap();
         for n in mutex.get_node_iter() {
-            ke += 0.5 * n.speed[0].powi(2) * n.mass;
-            ke += 0.5 * n.speed[1].powi(2) * n.mass;
+            ke += 0.5 * (n.speed[0].powi(2) + n.speed[1].powi(2)) * n.mass;
         }
         ke
     }
 
-    fn calc_dir_vec<T>(n1: &Node<T>, n2: &Node<T>) -> [f64; 2]
+    fn calc_dir_vec<T>(n1: &Node<T>, n2: &Node<T>) -> [f32; 2]
     where
         T: PartialEq,
     {
@@ -236,20 +271,23 @@ impl SimGraph {
         ]
     }
 
-    pub fn calc_dist<T>(n1: &Node<T>, n2: &Node<T>) -> f64
+    pub fn calc_dist<T>(n1: &Node<T>, n2: &Node<T>) -> f32
     where
         T: PartialEq,
     {
-        f64::sqrt(
+        f32::sqrt(
             (n2.position[0] - n1.position[0]).powi(2) + (n2.position[1] - n1.position[1]).powi(2),
         )
     }
 
-    fn calc_dist_x_y(n1: &[f64; 2], n2: &[f64; 2]) -> (f64, f64) {
-        ((n2[0] - n1[0]), (n2[1] - n1[1]))
+    pub fn calc_dist_to_center<T>(n1: &Node<T>) -> f32
+    where
+        T: PartialEq,
+    {
+        f32::sqrt((n1.position[0]).powi(2) + (n1.position[1]).powi(2))
     }
 
-    fn spring_force<T>(&self, g: Arc<Graph<T>>, f_list_arc: Arc<Mutex<Vec<[f64; 2]>>>) -> f64
+    fn spring_force<T>(&self, g: Arc<Graph<T>>, f_list_arc: Arc<Mutex<Vec<[f32; 2]>>>) -> f32
     where
         T: PartialEq + Clone,
     {
@@ -280,42 +318,46 @@ impl SimGraph {
         ke
     }
 
-    fn electric_repulsion<T>(&self, n1: &Node<T>, n2: &Node<T>) -> [f64; 2]
+    fn electric_repulsion<T>(&self, n1: &Node<T>, n2: &Node<T>) -> [f32; 2]
     where
         T: PartialEq,
     {
         if n1 == n2 {
             return [0.0, 0.0];
         }
-        let dist = Self::calc_dist_x_y(&n1.position, &n2.position);
         let vec = Self::calc_dir_vec(n1, n2);
         let mut force = [0.0, 0.0];
 
         let x_y_len = vec[0].abs() + vec[1].abs();
         if x_y_len == 0.0 {
-            ([0.0, 0.0], 0);
+            return [0.0, 0.0];
         }
 
-        if dist.0 != 0.0 {
-            force[0] += vec[0].signum()
-                * (self.electric_repulsion_const * -(n1.mass * n2.mass).abs())
-                / (dist.0 * (vec[0].abs() / x_y_len)).powi(2);
+        let f = self.electric_repulsion_const * (n1.mass * n2.mass).abs();
+
+        if vec[0] != 0.0 && vec[0].abs() < self.e_range {
+            let r = (vec[0] * (vec[0].abs() / x_y_len));
+            force[0] += vec[0].signum() * -f / r.powi(2);
         }
-        if dist.1 != 0.0 {
-            force[1] += vec[1].signum()
-                * (self.electric_repulsion_const * -(n1.mass * n2.mass).abs())
-                / (dist.1 * (vec[1].abs() / x_y_len)).powi(2);
+        if vec[1] != 0.0 && vec[1].abs() < self.e_range {
+            let r = (vec[1] * (vec[1].abs() / x_y_len));
+            force[1] += vec[1].signum() * -f / r.powi(2);
         }
         force
     }
 
-    fn center_grav<T>(&self, n1: &Node<T>) -> [f64; 2]
+    fn center_grav<T>(&self, n1: &Node<T>) -> [f32; 2]
     where
         T: PartialEq,
     {
-        [
-            self.f2c * (-n1.position[0]).signum().signum(),
-            self.f2c * (-n1.position[1]).signum().signum(),
-        ]
+        let mut force = [0.0, 0.0];
+        if n1.position[0].is_finite() {
+            force[0] = self.f2c * (-n1.position[0]) * n1.mass;
+        }
+
+        if n1.position[1].is_finite() {
+            force[1] = self.f2c * (-n1.position[1]) * n1.mass;
+        }
+        force
     }
 }

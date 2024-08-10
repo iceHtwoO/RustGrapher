@@ -1,6 +1,6 @@
-use core::f64;
+use core::f32;
 use std::{
-    f64::{consts::PI, INFINITY},
+    f32::{consts::PI, INFINITY},
     fmt::Debug,
     marker::PhantomData,
     sync::{Arc, Mutex},
@@ -45,13 +45,15 @@ void main() {
 "#;
 #[derive(Copy, Clone, Debug)]
 struct Vertex {
-    position: [f64; 2],
+    position: [f32; 2],
     color: [f32; 4],
 }
 
 struct Energy {
-    kinetic: f64,
-    spring: f64,
+    kinetic: f32,
+    spring: f32,
+    repulsion_energy: f32,
+    pot_energy: f32,
 }
 
 implement_vertex!(Vertex, position, color);
@@ -94,7 +96,7 @@ where
     ) {
         let mut now = Instant::now();
         let mut last_redraw = Instant::now();
-        let mut scroll_scale: f64 = 1.0;
+        let mut scroll_scale: f32 = 1.0;
         let mut lastfps = 0;
 
         event_loop.run_return(|event, _, control_flow| {
@@ -114,7 +116,7 @@ where
                         modifiers,
                     } => match delta {
                         winit::event::MouseScrollDelta::LineDelta(x, y) => {
-                            scroll_scale += y as f64 * 0.5;
+                            scroll_scale += y as f32 * 0.5;
                         }
                         _ => (),
                     },
@@ -130,6 +132,8 @@ where
             self.energy.push(Energy {
                 kinetic: self.sim.kinetic_energy,
                 spring: self.sim.spring_energy,
+                repulsion_energy: self.sim.repulsion_energy,
+                pot_energy: self.sim.pot_energy,
             });
 
             self.plot_data();
@@ -144,12 +148,12 @@ where
         });
     }
 
-    fn draw_graph(&mut self, display: &Display<WindowSurface>, g: &Graph<T>, scroll_scale: &f64) {
+    fn draw_graph(&mut self, display: &Display<WindowSurface>, g: &Graph<T>, scroll_scale: &f32) {
         let mut target = display.draw();
         target.clear_color(1.0, 1.0, 1.0, 1.0);
 
-        let mut max: f64 = -INFINITY;
-        let mut min: f64 = INFINITY;
+        let mut max: f32 = -INFINITY;
+        let mut min: f32 = INFINITY;
         let avg_pos = g.avg_pos();
         for n in g.get_node_iter() {
             max = max.max(n.position[0]);
@@ -173,9 +177,9 @@ where
         g: &Graph<T>,
         target: &mut Frame,
         display: &Display<WindowSurface>,
-        scale: &f64,
-        max_m: &f64,
-        avg: &[f64; 2],
+        scale: &f32,
+        max_m: &f32,
+        avg: &[f32; 2],
     ) {
         let program =
             glium::Program::from_source(display, VERTEX_SHADER_SRC, FRAGMENT_SHADER_SRC, None)
@@ -225,9 +229,9 @@ where
         g: &Graph<T>,
         target: &mut Frame,
         display: &Display<WindowSurface>,
-        scale: &f64,
-        max_m: &f64,
-        avg: &[f64; 2],
+        scale: &f32,
+        max_m: &f32,
+        avg: &[f32; 2],
     ) {
         let program =
             glium::Program::from_source(display, VERTEX_SHADER_SRC, FRAGMENT_SHADER_SRC, None)
@@ -237,7 +241,7 @@ where
 
         for (e, node) in g.get_node_iter().enumerate() {
             let mut pos = node.position;
-            let r = (f64::sqrt(node.mass * PI) * scale) * 0.1;
+            let r = (f32::sqrt(node.mass * PI) * scale) * 0.1;
 
             pos[0] -= avg[0];
             pos[1] -= avg[1];
@@ -274,10 +278,16 @@ where
         let mut x_axis = Vec::with_capacity(self.energy.len());
         let mut k_energy = Vec::with_capacity(self.energy.len());
         let mut s_energy = Vec::with_capacity(self.energy.len());
+        let mut r_energy = Vec::with_capacity(self.energy.len());
+        let mut pot_energy = Vec::with_capacity(self.energy.len());
+        let mut sys_energy = Vec::with_capacity(self.energy.len());
         for (i, e) in self.energy.iter().enumerate() {
             x_axis.push(i);
             k_energy.push(e.kinetic);
             s_energy.push(e.spring);
+            r_energy.push(e.repulsion_energy);
+            pot_energy.push(e.pot_energy);
+            sys_energy.push(e.repulsion_energy + e.kinetic + e.spring + e.pot_energy);
         }
 
         let mut plot = Plot::new();
@@ -291,12 +301,27 @@ where
             .connect_gaps(true)
             .name("Kinetic energy");
 
-        let s_trace = Scatter::new(x_axis, s_energy)
+        let s_trace = Scatter::new(x_axis.clone(), s_energy)
             .connect_gaps(true)
             .name("Spring energy");
 
+        let e_trace = Scatter::new(x_axis.clone(), r_energy)
+            .connect_gaps(true)
+            .name("Repulsion energy");
+
+        let pot_trace = Scatter::new(x_axis.clone(), pot_energy)
+            .connect_gaps(true)
+            .name("Pot energy");
+
+        let sys_trace = Scatter::new(x_axis, sys_energy)
+            .connect_gaps(true)
+            .name("System energy");
+
         plot.add_trace(k_trace);
         plot.add_trace(s_trace);
+        plot.add_trace(e_trace);
+        plot.add_trace(pot_trace);
+        plot.add_trace(sys_trace);
 
         plot.write_html("out.html");
     }

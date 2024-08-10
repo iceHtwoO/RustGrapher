@@ -27,9 +27,9 @@ where
     T: PartialEq,
 {
     pub data: T,
-    pub position: [f64; 2],
-    pub speed: [f64; 2],
-    pub mass: f64,
+    pub position: [f32; 2],
+    pub speed: [f32; 2],
+    pub mass: f32,
     pub fixed: bool,
 }
 
@@ -49,8 +49,8 @@ where
     T: PartialEq,
 {
     pub fn new(data: T) -> Self {
-        let x: f64 = rand::thread_rng().gen_range(-60.0..60.0);
-        let y: f64 = rand::thread_rng().gen_range(-60.0..60.0);
+        let x: f32 = rand::thread_rng().gen_range(-60.0..60.0);
+        let y: f32 = rand::thread_rng().gen_range(-60.0..60.0);
         Self {
             data,
             position: [x, y],
@@ -71,7 +71,7 @@ where
     nodes: Vec<Node<T>>,
     edges: Vec<Edge>,
     graph_type: GraphType,
-    last_avg_pos: [f64; 2],
+    last_avg_pos: [f32; 2],
 }
 
 impl<T> Graph<T>
@@ -95,9 +95,9 @@ where
     pub fn add_node_pos(
         &mut self,
         data: T,
-        position: [f64; 2],
+        position: [f32; 2],
         fixed: bool,
-        mass: f64,
+        mass: f32,
     ) -> DefaultIndex {
         self.nodes.push(Node {
             data,
@@ -109,9 +109,9 @@ where
         self.nodes.len()
     }
 
-    pub fn add_node_rand_pos(&mut self, data: T, fixed: bool, mass: f64) -> DefaultIndex {
-        let x: f64 = rand::thread_rng().gen_range(-60.0..60.0);
-        let y: f64 = rand::thread_rng().gen_range(-60.0..60.0);
+    pub fn add_node_rand_pos(&mut self, data: T, fixed: bool, mass: f32) -> DefaultIndex {
+        let x: f32 = rand::thread_rng().gen_range(-60.0..60.0);
+        let y: f32 = rand::thread_rng().gen_range(-60.0..60.0);
         self.nodes.push(Node {
             data,
             position: [x, y],
@@ -163,7 +163,7 @@ where
         self.edges.iter()
     }
 
-    pub fn set_node_speed(&mut self, i: DefaultIndex, speed: [f64; 2]) {
+    pub fn set_node_speed(&mut self, i: DefaultIndex, speed: [f32; 2]) {
         self.nodes.get_mut(i).unwrap().speed = speed;
     }
 
@@ -200,24 +200,24 @@ where
         }
 
         for (i, node) in self.get_node_mut_iter().enumerate() {
-            node.mass += count[i] as f64 * node.mass as f64;
+            node.mass += count[i] as f32 * node.mass as f32;
         }
     }
 
-    pub fn avg_pos(&self) -> [f64; 2] {
+    pub fn avg_pos(&self) -> [f32; 2] {
         let mut avg_pos = [0.0, 0.0];
         for n in self.get_node_iter() {
             avg_pos[0] += n.position[0];
             avg_pos[1] += n.position[1];
         }
 
-        avg_pos[0] /= self.get_node_count() as f64;
-        avg_pos[1] /= self.get_node_count() as f64;
+        avg_pos[0] /= self.get_node_count() as f32;
+        avg_pos[1] /= self.get_node_count() as f32;
 
         avg_pos
     }
 
-    pub fn avg_avg_pos(&mut self) -> [f64; 2] {
+    pub fn avg_avg_pos(&mut self) -> [f32; 2] {
         let mut avg_pos = self.avg_pos();
         avg_pos[0] = (avg_pos[0] + self.last_avg_pos[0]) / 2.0;
         avg_pos[1] = (avg_pos[1] + self.last_avg_pos[1]) / 2.0;
