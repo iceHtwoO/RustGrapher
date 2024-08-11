@@ -2,6 +2,7 @@ use std::f32::consts::PI;
 
 use super::Vertex;
 
+#[allow(dead_code)]
 pub fn cube(pos: [f32; 2], color: [f32; 4], s: f32) -> Vec<Vertex> {
     let mut shape = Vec::with_capacity(6);
     shape.push(Vertex {

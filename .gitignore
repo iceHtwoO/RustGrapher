@@ -1,5 +1,4 @@
 /target
-*.png
 *.html
 .vscode/
 *.json

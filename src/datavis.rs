@@ -3,6 +3,7 @@ use std::{
     f32::{consts::PI, INFINITY},
     fmt::Debug,
     marker::PhantomData,
+    sync::{Arc, Mutex},
     time::Instant,
 };
 
@@ -14,7 +15,6 @@ use rand::{rngs::StdRng, Rng, SeedableRng};
 use winit::{
     event::{Event, WindowEvent},
     event_loop::{ControlFlow, EventLoop},
-    platform::run_return::EventLoopExtRunReturn,
 };
 
 mod shapes;
@@ -78,27 +78,31 @@ where
         }
     }
 
-    pub fn create_window(&mut self, g: Graph<T>) {
-        let mut event_loop = winit::event_loop::EventLoopBuilder::new().build();
+    pub fn create_window(mut self, g: Graph<T>) {
+        let event_loop = winit::event_loop::EventLoopBuilder::new().build();
 
-        let (window, display) =
+        let (_window, display) =
             glium::backend::glutin::SimpleWindowBuilder::new().build(&event_loop);
 
-        self.run_render_loop(g, event_loop, &display);
+        self.run_render_loop(g, event_loop, display);
     }
 
     fn run_render_loop(
-        &mut self,
+        mut self,
         mut graph: Graph<T>,
         mut event_loop: EventLoop<()>,
-        display: &Display<WindowSurface>,
+        display: Display<WindowSurface>,
     ) {
         let mut now = Instant::now();
         let mut last_redraw = Instant::now();
+        let mut last_pause = Instant::now();
         let mut scroll_scale: f32 = 1.0;
         let mut lastfps = 0;
+        let mut toggle_sim = false;
+        let self_arc = Arc::new(Mutex::new(self));
+        let display_arc = Arc::new(display);
 
-        event_loop.run_return(|event, _, control_flow| {
+        event_loop.run(move |event, _, control_flow| {
             *control_flow = ControlFlow::Poll;
 
             let fps = 1_000_000_000 / now.elapsed().as_nanos();
@@ -108,14 +112,18 @@ where
                     WindowEvent::CloseRequested | WindowEvent::Destroyed => {
                         *control_flow = ControlFlow::Exit;
                     }
-                    WindowEvent::MouseWheel {
-                        device_id,
-                        delta,
-                        phase,
-                        modifiers,
-                    } => match delta {
-                        winit::event::MouseScrollDelta::LineDelta(x, y) => {
+                    WindowEvent::MouseWheel { delta, .. } => match delta {
+                        winit::event::MouseScrollDelta::LineDelta(_, y) => {
                             scroll_scale += y as f32 * 0.5;
+                        }
+                        _ => (),
+                    },
+                    WindowEvent::KeyboardInput { input, .. } => match input.virtual_keycode {
+                        Some(winit::event::VirtualKeyCode::Space) => {
+                            if last_pause.elapsed().as_millis() >= 100 {
+                                toggle_sim = !toggle_sim;
+                                last_pause = Instant::now();
+                            }
                         }
                         _ => (),
                     },
@@ -124,21 +132,33 @@ where
                 _ => (),
             }
 
-            let mut g_taken = std::mem::take(&mut graph);
-            (self.sim, g_taken) = self.sim.clone().sim(g_taken);
-            graph = g_taken;
+            let self_arc_clone = Arc::clone(&self_arc);
+            let mut self_mutex = self_arc_clone.lock().unwrap();
+            let x = self_mutex.sim.s_per_update > 0.0;
+            if toggle_sim && x {
+                let mut g_taken = std::mem::take(&mut graph);
+                g_taken = self_mutex.sim.sim(g_taken);
+                graph = g_taken;
 
-            self.energy.push(Energy {
-                kinetic: self.sim.kinetic_energy,
-                spring: self.sim.spring_energy,
-                repulsion_energy: self.sim.repulsion_energy,
-                pot_energy: self.sim.pot_energy,
-            });
+                let kinetic_energy = self_mutex.sim.kinetic_energy;
+                let spring_energy = self_mutex.sim.spring_energy;
+                let repulsion_energy = self_mutex.sim.repulsion_energy;
+                let pot_energy = self_mutex.sim.pot_energy;
+                self_mutex.energy.push(Energy {
+                    kinetic: kinetic_energy,
+                    spring: spring_energy,
+                    repulsion_energy,
+                    pot_energy,
+                });
+                self_mutex.plot_data();
+            }
+            drop(self_mutex);
 
-            self.plot_data();
+            let self_arc_clone = Arc::clone(&self_arc);
+            let mut self_mutex = self_arc_clone.lock().unwrap();
 
-            if last_redraw.elapsed().as_millis() >= 17 {
-                self.draw_graph(&display, &graph, &scroll_scale);
+            if last_redraw.elapsed().as_millis() >= 34 {
+                self_mutex.draw_graph(&display_arc, &graph, &scroll_scale);
                 println!("FPS{}", (fps + lastfps) / 2);
                 last_redraw = Instant::now();
             }
@@ -149,7 +169,7 @@ where
 
     fn draw_graph(&mut self, display: &Display<WindowSurface>, g: &Graph<T>, scroll_scale: &f32) {
         let mut target = display.draw();
-        target.clear_color(1.0, 1.0, 1.0, 1.0);
+        target.clear_color(0.0, 0.0, 0.0, 1.0);
 
         let mut max: f32 = -INFINITY;
         let mut min: f32 = INFINITY;
@@ -159,7 +179,7 @@ where
             min = min.min(n.position[0]);
         }
 
-        let scale = 2.0 / (((max - min).abs()).max(100.0) + 0.01 + scroll_scale);
+        let scale = 2.0 / (scroll_scale * 20.0);
 
         let mut max_m = 0.0;
         for n in g.get_node_iter() {
@@ -186,6 +206,12 @@ where
 
         let mut shape: Vec<Vertex> = vec![];
 
+        shape.append(&mut shapes::line(
+            [-1.0, -0.9],
+            [(1.0 * scale) - 1.0, -0.9],
+            [0.0, 1.0, 0.0, 1.0],
+        ));
+
         for edge in g.get_edge_iter() {
             let n1 = g.get_node_by_index(edge.0);
             let n2 = g.get_node_by_index(edge.1);
@@ -200,9 +226,9 @@ where
 
             let min_m = n1.mass.min(n2.mass);
             let color = [
-                1.0,
-                1.0 - (min_m / max_m) as f32 * 6.0,
-                1.0 - (min_m / max_m) as f32 * 6.0,
+                (min_m / max_m) as f32 * 10.0,
+                (min_m / max_m) as f32 * 6.0,
+                (min_m / max_m) as f32 * 6.0,
                 (min_m / max_m) as f32,
             ];
 
@@ -250,9 +276,9 @@ where
 
             let mut rand = StdRng::seed_from_u64(e as u64);
             let color = [
-                (rand.gen_range(0..=100) as f32) / 100.0,
-                (rand.gen_range(0..=100) as f32) / 100.0,
-                (rand.gen_range(0..=100) as f32) / 100.0,
+                (rand.gen_range(10..=100) as f32) / 100.0,
+                (rand.gen_range(10..=100) as f32) / 100.0,
+                (rand.gen_range(10..=100) as f32) / 100.0,
                 (node.mass / max_m) as f32,
             ];
 

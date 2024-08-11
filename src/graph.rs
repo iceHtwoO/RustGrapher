@@ -1,10 +1,8 @@
 use std::{
-    clone,
     slice::{Iter, IterMut},
     vec,
 };
 
-use plotly::{Plot, Scatter};
 use rand::Rng;
 
 #[derive(Debug, Clone)]
@@ -28,7 +26,7 @@ where
 {
     pub data: T,
     pub position: [f32; 2],
-    pub speed: [f32; 2],
+    pub velocity: [f32; 2],
     pub mass: f32,
     pub fixed: bool,
 }
@@ -54,12 +52,13 @@ where
         Self {
             data,
             position: [x, y],
-            speed: [0.0, 0.0],
+            velocity: [0.0, 0.0],
             mass: 1.0,
             fixed: false,
         }
     }
 }
+#[allow(dead_code)]
 #[derive(Debug, Clone)]
 pub struct Edge(pub DefaultIndex, pub DefaultIndex, u64);
 
@@ -71,7 +70,6 @@ where
     nodes: Vec<Node<T>>,
     edges: Vec<Edge>,
     graph_type: GraphType,
-    last_avg_pos: [f32; 2],
 }
 
 impl<T> Graph<T>
@@ -83,7 +81,6 @@ where
             nodes: vec![],
             edges: vec![],
             graph_type: GraphType::Undirected,
-            last_avg_pos: [0.0, 0.0],
         }
     }
 
@@ -102,20 +99,7 @@ where
         self.nodes.push(Node {
             data,
             position,
-            speed: [0.0, 0.0],
-            mass,
-            fixed,
-        });
-        self.nodes.len()
-    }
-
-    pub fn add_node_rand_pos(&mut self, data: T, fixed: bool, mass: f32) -> DefaultIndex {
-        let x: f32 = rand::thread_rng().gen_range(-60.0..60.0);
-        let y: f32 = rand::thread_rng().gen_range(-60.0..60.0);
-        self.nodes.push(Node {
-            data,
-            position: [x, y],
-            speed: [0.0, 0.0],
+            velocity: [0.0, 0.0],
             mass,
             fixed,
         });
@@ -163,8 +147,8 @@ where
         self.edges.iter()
     }
 
-    pub fn set_node_speed(&mut self, i: DefaultIndex, speed: [f32; 2]) {
-        self.nodes.get_mut(i).unwrap().speed = speed;
+    pub fn set_node_velocity(&mut self, i: DefaultIndex, velocity: [f32; 2]) {
+        self.nodes.get_mut(i).unwrap().velocity = velocity;
     }
 
     pub fn get_incoming_count(&self, i: DefaultIndex) -> u32 {
@@ -214,14 +198,6 @@ where
         avg_pos[0] /= self.get_node_count() as f32;
         avg_pos[1] /= self.get_node_count() as f32;
 
-        avg_pos
-    }
-
-    pub fn avg_avg_pos(&mut self) -> [f32; 2] {
-        let mut avg_pos = self.avg_pos();
-        avg_pos[0] = (avg_pos[0] + self.last_avg_pos[0]) / 2.0;
-        avg_pos[1] = (avg_pos[1] + self.last_avg_pos[1]) / 2.0;
-        self.last_avg_pos = avg_pos;
         avg_pos
     }
 }

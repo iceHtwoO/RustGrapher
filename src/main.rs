@@ -40,7 +40,7 @@ fn main() {
     graph_wiki(&mut g);
 
     g.change_mass_based_on_incoming();
-    let mut datavis = datavis::DataVis::new();
+    let datavis = datavis::DataVis::new();
     datavis.create_window(g);
 }
 
@@ -48,7 +48,7 @@ fn graph_wiki(g: &mut Graph<Data>) {
     if let Ok(w) = load_wiki() {
         for e in w {
             println!("Node Count:{}", g.get_node_count());
-            if (g.get_node_count() > 2000) {
+            if g.get_node_count() > 1000 {
                 break;
             }
             let node_data = Data::new(e.title);
