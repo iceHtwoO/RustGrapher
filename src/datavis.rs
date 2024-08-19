@@ -3,7 +3,8 @@ use std::{
     f32::{consts::PI, INFINITY},
     fmt::Debug,
     marker::PhantomData,
-    sync::{Arc, Mutex},
+    sync::{Arc, Mutex, RwLock},
+    thread,
     time::Instant,
 };
 
@@ -15,6 +16,7 @@ use rand::{rngs::StdRng, Rng, SeedableRng};
 use winit::{
     event::{Event, WindowEvent},
     event_loop::{ControlFlow, EventLoop},
+    window::Window,
 };
 
 mod shapes;
@@ -78,35 +80,46 @@ where
         }
     }
 
-    pub fn create_window(mut self, g: Graph<T>) {
+    pub fn create_window(self, g: Graph<T>) {
         let event_loop = winit::event_loop::EventLoopBuilder::new().build();
 
-        let (_window, display) =
+        let (window, display) =
             glium::backend::glutin::SimpleWindowBuilder::new().build(&event_loop);
 
-        self.run_render_loop(g, event_loop, display);
+        self.run_render_loop(g, event_loop, display, window);
     }
 
     fn run_render_loop(
-        mut self,
-        mut graph: Graph<T>,
-        mut event_loop: EventLoop<()>,
+        self,
+        graph: Graph<T>,
+        event_loop: EventLoop<()>,
         display: Display<WindowSurface>,
+        window: Window,
     ) {
-        let mut now = Instant::now();
         let mut last_redraw = Instant::now();
         let mut last_pause = Instant::now();
         let mut scroll_scale: f32 = 1.0;
-        let mut lastfps = 0;
-        let mut toggle_sim = false;
+        let mut camera = [0.0, 0.0];
+        let mut cursor = winit::dpi::PhysicalPosition::new(0.0, 0.0);
+
+        let toggle_sim = Arc::new(RwLock::new(true));
+        let mut sim = self.sim.clone();
+
         let self_arc = Arc::new(Mutex::new(self));
         let display_arc = Arc::new(display);
+        let graph = Arc::new(RwLock::new(graph));
+
+        let graph_clone = Arc::clone(&graph);
+        let toggle_sim_clone = Arc::clone(&toggle_sim);
+        thread::spawn(move || loop {
+            let toggle_sim_read_guard = toggle_sim_clone.read().unwrap();
+            if *toggle_sim_read_guard {
+                sim.simulation_step(Arc::clone(&graph_clone));
+            }
+        });
 
         event_loop.run(move |event, _, control_flow| {
             *control_flow = ControlFlow::Poll;
-
-            let fps = 1_000_000_000 / now.elapsed().as_nanos();
-            now = Instant::now();
             match event {
                 Event::WindowEvent { event, .. } => match event {
                     WindowEvent::CloseRequested | WindowEvent::Destroyed => {
@@ -118,12 +131,19 @@ where
                         }
                         _ => (),
                     },
+                    WindowEvent::CursorMoved { position, .. } => {
+                        cursor = position;
+                    }
                     WindowEvent::KeyboardInput { input, .. } => match input.virtual_keycode {
                         Some(winit::event::VirtualKeyCode::Space) => {
                             if last_pause.elapsed().as_millis() >= 100 {
-                                toggle_sim = !toggle_sim;
+                                let mut toggle_sim_write_guard = toggle_sim.write().unwrap();
+                                *toggle_sim_write_guard = !(*toggle_sim_write_guard);
                                 last_pause = Instant::now();
                             }
+                        }
+                        Some(winit::event::VirtualKeyCode::Return) => {
+                            camera = graph.read().unwrap().avg_pos();
                         }
                         _ => (),
                     },
@@ -134,71 +154,78 @@ where
 
             let self_arc_clone = Arc::clone(&self_arc);
             let mut self_mutex = self_arc_clone.lock().unwrap();
-            let x = self_mutex.sim.s_per_update > 0.0;
-            if toggle_sim && x {
-                let mut g_taken = std::mem::take(&mut graph);
-                g_taken = self_mutex.sim.sim(g_taken);
-                graph = g_taken;
-
-                let kinetic_energy = self_mutex.sim.kinetic_energy;
-                let spring_energy = self_mutex.sim.spring_energy;
-                let repulsion_energy = self_mutex.sim.repulsion_energy;
-                let pot_energy = self_mutex.sim.pot_energy;
-                self_mutex.energy.push(Energy {
-                    kinetic: kinetic_energy,
-                    spring: spring_energy,
-                    repulsion_energy,
-                    pot_energy,
-                });
-                self_mutex.plot_data();
-            }
-            drop(self_mutex);
-
-            let self_arc_clone = Arc::clone(&self_arc);
-            let mut self_mutex = self_arc_clone.lock().unwrap();
 
             if last_redraw.elapsed().as_millis() >= 34 {
-                self_mutex.draw_graph(&display_arc, &graph, &scroll_scale);
-                println!("FPS{}", (fps + lastfps) / 2);
+                let scale = 2.0 / (scroll_scale * 20.0);
                 last_redraw = Instant::now();
-            }
 
-            lastfps = fps;
+                let camera_factor = 0.05 * scroll_scale * 20.0;
+                if cursor.x < window.inner_size().width as f64 * 0.1 {
+                    camera[0] -= camera_factor;
+                } else if cursor.x > window.inner_size().width as f64 * 0.9 {
+                    camera[0] += camera_factor;
+                }
+                if cursor.y < window.inner_size().height as f64 * 0.1 {
+                    camera[1] += camera_factor;
+                } else if cursor.y > window.inner_size().height as f64 * 0.9 {
+                    camera[1] -= camera_factor;
+                }
+                self_mutex.draw_graph(&display_arc, Arc::clone(&graph), &scale, &camera);
+            }
         });
     }
 
-    fn draw_graph(&mut self, display: &Display<WindowSurface>, g: &Graph<T>, scroll_scale: &f32) {
+    fn draw_graph(
+        &mut self,
+        display: &Display<WindowSurface>,
+        graph: Arc<RwLock<Graph<T>>>,
+        scale: &f32,
+        camera: &[f32; 2],
+    ) {
         let mut target = display.draw();
         target.clear_color(0.0, 0.0, 0.0, 1.0);
 
         let mut max: f32 = -INFINITY;
         let mut min: f32 = INFINITY;
-        let avg_pos = g.avg_pos();
-        for n in g.get_node_iter() {
+        let graph_read_guard = graph.read().unwrap();
+        for n in graph_read_guard.get_node_iter() {
             max = max.max(n.position[0]);
             min = min.min(n.position[0]);
         }
 
-        let scale = 2.0 / (scroll_scale * 20.0);
-
         let mut max_m = 0.0;
-        for n in g.get_node_iter() {
+        for n in graph_read_guard.get_node_iter() {
             max_m = n.mass.max(max_m);
         }
-        self.draw_edge(g, &mut target, display, &scale, &max_m, &avg_pos);
-        self.draw_node(g, &mut target, display, &scale, &max_m, &avg_pos);
+        drop(graph_read_guard);
+        self.draw_edge(
+            Arc::clone(&graph),
+            &mut target,
+            display,
+            &scale,
+            &max_m,
+            &camera,
+        );
+        self.draw_node(
+            Arc::clone(&graph),
+            &mut target,
+            display,
+            &scale,
+            &max_m,
+            &camera,
+        );
 
         target.finish().unwrap();
     }
 
     fn draw_edge(
         &self,
-        g: &Graph<T>,
+        graph: Arc<RwLock<Graph<T>>>,
         target: &mut Frame,
         display: &Display<WindowSurface>,
         scale: &f32,
         max_m: &f32,
-        avg: &[f32; 2],
+        camera: &[f32; 2],
     ) {
         let program =
             glium::Program::from_source(display, VERTEX_SHADER_SRC, FRAGMENT_SHADER_SRC, None)
@@ -212,16 +239,18 @@ where
             [0.0, 1.0, 0.0, 1.0],
         ));
 
-        for edge in g.get_edge_iter() {
-            let n1 = g.get_node_by_index(edge.0);
-            let n2 = g.get_node_by_index(edge.1);
+        let graph_read_guard = graph.read().unwrap();
+
+        for edge in graph_read_guard.get_edge_iter() {
+            let n1 = graph_read_guard.get_node_by_index(edge.0);
+            let n2 = graph_read_guard.get_node_by_index(edge.1);
             let p1 = [
-                (n1.position[0] - avg[0]) * scale,
-                (n1.position[1] - avg[1]) * scale,
+                (n1.position[0] - camera[0]) * scale,
+                (n1.position[1] - camera[1]) * scale,
             ];
             let p2 = [
-                (n2.position[0] - avg[0]) * scale,
-                (n2.position[1] - avg[1]) * scale,
+                (n2.position[0] - camera[0]) * scale,
+                (n2.position[1] - camera[1]) * scale,
             ];
 
             let min_m = n1.mass.min(n2.mass);
@@ -251,7 +280,7 @@ where
 
     fn draw_node(
         &self,
-        g: &Graph<T>,
+        graph: Arc<RwLock<Graph<T>>>,
         target: &mut Frame,
         display: &Display<WindowSurface>,
         scale: &f32,
@@ -263,8 +292,9 @@ where
                 .unwrap();
 
         let mut shape: Vec<Vertex> = vec![];
+        let graph_read_guard = graph.read().unwrap();
 
-        for (e, node) in g.get_node_iter().enumerate() {
+        for (e, node) in graph_read_guard.get_node_iter().enumerate() {
             let mut pos = node.position;
             let r = (f32::sqrt(node.mass * PI) * scale) * 0.1;
 
