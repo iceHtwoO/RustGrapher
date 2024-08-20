@@ -1,12 +1,8 @@
 extern crate glium;
 extern crate winit;
 
-pub mod datavis;
-pub mod graph;
-pub mod simgraph;
-
-use graph::Graph;
-
+use grapher::datavis::DataVis;
+use grapher::graph::Graph;
 use serde::Deserialize;
 use std::fs::File;
 use std::io::BufReader;
@@ -40,7 +36,7 @@ fn main() {
     graph_wiki(&mut g);
 
     g.change_mass_based_on_incoming();
-    let datavis = datavis::DataVis::new();
+    let datavis = DataVis::new();
     datavis.create_window(g);
 }
 

@@ -8,7 +8,7 @@ use std::{
     time::Instant,
 };
 
-use crate::{simgraph::SimGraph, Graph};
+use crate::{graph::Graph, simgraph::SimGraph};
 use glium::{glutin::surface::WindowSurface, implement_vertex, Display, Frame, Surface};
 
 use plotly::{layout::Axis, Layout, Plot, Scatter};
@@ -63,7 +63,7 @@ pub struct DataVis<T>
 where
     T: PartialEq + Send + Sync + 'static + Clone,
 {
-    sim: SimGraph,
+    sim: SimGraph<T>,
     phantom: PhantomData<T>,
     energy: Vec<Energy>,
 }
