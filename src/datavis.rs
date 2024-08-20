@@ -8,7 +8,11 @@ use std::{
     time::Instant,
 };
 
-use crate::{graph::Graph, simgraph::SimGraph};
+use crate::{
+    graph::Graph,
+    quadtree::{QuadTree, Rectangle},
+    simgraph::SimGraph,
+};
 use glium::{glutin::surface::WindowSurface, implement_vertex, Display, Frame, Surface};
 
 use plotly::{layout::Axis, Layout, Plot, Scatter};
@@ -102,7 +106,7 @@ where
         let mut camera = [0.0, 0.0];
         let mut cursor = winit::dpi::PhysicalPosition::new(0.0, 0.0);
 
-        let toggle_sim = Arc::new(RwLock::new(true));
+        let toggle_sim = Arc::new(RwLock::new(false));
         let mut sim = self.sim.clone();
 
         let self_arc = Arc::new(Mutex::new(self));
@@ -207,6 +211,14 @@ where
             &camera,
         );
         self.draw_node(
+            Arc::clone(&graph),
+            &mut target,
+            display,
+            &scale,
+            &max_m,
+            &camera,
+        );
+        self.draw_quadtree(
             Arc::clone(&graph),
             &mut target,
             display,
@@ -327,6 +339,140 @@ where
                 &Default::default(),
             )
             .unwrap();
+    }
+
+    fn draw_quadtree(
+        &self,
+        graph: Arc<RwLock<Graph<T>>>,
+        target: &mut Frame,
+        display: &Display<WindowSurface>,
+        scale: &f32,
+        max_m: &f32,
+        camera: &[f32; 2],
+    ) {
+        let program =
+            glium::Program::from_source(display, VERTEX_SHADER_SRC, FRAGMENT_SHADER_SRC, None)
+                .unwrap();
+
+        let mut shape: Vec<Vertex> = vec![];
+
+        let graph_read_guard = graph.read().unwrap();
+
+        let mut max_x = -INFINITY;
+        let mut min_x = INFINITY;
+        let mut max_y = -INFINITY;
+        let mut min_y = INFINITY;
+
+        for node in graph_read_guard.get_node_iter() {
+            max_x = max_x.max(node.position[0]);
+            max_y = max_y.max(node.position[1]);
+            min_x = min_x.min(node.position[0]);
+            min_y = min_y.min(node.position[1]);
+        }
+
+        let w = max_x - min_x;
+        let h = max_y - min_y;
+        let boundary = Rectangle::new([min_x + 0.5 * w, min_y + 0.5 * h], w, h);
+
+        let mut quadtree = QuadTree::<usize>::new();
+
+        for (i, node) in graph_read_guard.get_node_iter().enumerate() {
+            quadtree.add_node(i, node.position, node.mass, &boundary);
+        }
+        Self::get_qt_vertex(&quadtree, &mut shape, camera, scale);
+        let l = [-1.0, 1.0];
+        let f = quadtree.get_mass(&l);
+
+        let mut pos = l;
+
+        pos[0] -= camera[0];
+        pos[1] -= camera[1];
+
+        pos[0] *= scale;
+        pos[1] *= scale;
+
+        shape.append(&mut shapes::rectangle_lines(
+            pos,
+            [0.5, 1.0, 0.9, 1.0],
+            0.7 * scale,
+            0.7 * scale,
+        ));
+
+        for v in f {
+            let mut pos = v.0;
+
+            pos[0] -= camera[0];
+            pos[1] -= camera[1];
+
+            pos[0] *= scale;
+            pos[1] *= scale;
+
+            shape.append(&mut shapes::rectangle_lines(
+                pos,
+                [0.5, 1.0, 0.1, 1.0],
+                0.7 * scale,
+                0.7 * scale,
+            ));
+        }
+
+        let vertex_buffer = glium::VertexBuffer::new(display, &shape).unwrap();
+        let indices = glium::index::NoIndices(glium::index::PrimitiveType::LinesList);
+
+        target
+            .draw(
+                &vertex_buffer,
+                indices,
+                &program,
+                &glium::uniforms::EmptyUniforms,
+                &Default::default(),
+            )
+            .unwrap();
+    }
+
+    fn get_qt_vertex(
+        quadtree: &QuadTree<usize>,
+        shape: &mut Vec<Vertex>,
+        camera: &[f32; 2],
+        scale: &f32,
+    ) {
+        match quadtree {
+            QuadTree::Root {
+                children, boundary, ..
+            } => {
+                for child in children {
+                    Self::get_qt_vertex(child, shape, camera, scale);
+                }
+                let mut pos = boundary.center;
+
+                pos[0] -= camera[0];
+                pos[1] -= camera[1];
+
+                pos[0] *= scale;
+                pos[1] *= scale;
+                shape.append(&mut shapes::rectangle_lines(
+                    pos,
+                    [0.0, 0.0, 1.0, 1.0],
+                    boundary.width * scale * 0.5,
+                    boundary.height * scale * 0.5,
+                ));
+            }
+            QuadTree::Leaf { boundary, .. } => {
+                let mut pos = boundary.center;
+
+                pos[0] -= camera[0];
+                pos[1] -= camera[1];
+
+                pos[0] *= scale;
+                pos[1] *= scale;
+                shape.append(&mut shapes::rectangle_lines(
+                    pos,
+                    [0.0, 0.0, 1.0, 1.0],
+                    boundary.width * scale * 0.5,
+                    boundary.height * scale * 0.5,
+                ));
+            }
+            _ => (),
+        }
     }
 
     pub fn plot_data(&self) {

@@ -3,7 +3,7 @@ use std::f32::consts::PI;
 use super::Vertex;
 
 #[allow(dead_code)]
-pub fn cube(pos: [f32; 2], color: [f32; 4], s: f32) -> Vec<Vertex> {
+pub fn rectangle(pos: [f32; 2], color: [f32; 4], s: f32) -> Vec<Vertex> {
     let mut shape = Vec::with_capacity(6);
     shape.push(Vertex {
         position: [pos[0] - s, pos[1] - s],
@@ -33,6 +33,50 @@ pub fn cube(pos: [f32; 2], color: [f32; 4], s: f32) -> Vec<Vertex> {
         position: [pos[0] - s, pos[1] + s],
         color,
     });
+    shape
+}
+
+#[allow(dead_code)]
+pub fn rectangle_lines(pos: [f32; 2], color: [f32; 4], x: f32, y: f32) -> Vec<Vertex> {
+    let mut shape = Vec::with_capacity(6);
+    shape.push(Vertex {
+        position: [pos[0] - x, pos[1] - y],
+        color,
+    });
+
+    shape.push(Vertex {
+        position: [pos[0] + x, pos[1] - y],
+        color,
+    });
+
+    shape.push(Vertex {
+        position: [pos[0] + x, pos[1] - y],
+        color,
+    });
+    shape.push(Vertex {
+        position: [pos[0] + x, pos[1] + y],
+        color,
+    });
+
+    shape.push(Vertex {
+        position: [pos[0] + x, pos[1] + y],
+        color,
+    });
+    shape.push(Vertex {
+        position: [pos[0] - x, pos[1] + y],
+        color,
+    });
+
+    shape.push(Vertex {
+        position: [pos[0] - x, pos[1] + y],
+        color,
+    });
+
+    shape.push(Vertex {
+        position: [pos[0] - x, pos[1] - y],
+        color,
+    });
+
     shape
 }
 

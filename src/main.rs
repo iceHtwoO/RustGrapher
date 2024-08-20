@@ -1,6 +1,7 @@
 extern crate glium;
 extern crate winit;
 
+use grapher::datavis;
 use grapher::datavis::DataVis;
 use grapher::graph::Graph;
 use serde::Deserialize;

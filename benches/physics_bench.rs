@@ -3,7 +3,9 @@ use std::sync::{Arc, RwLock};
 use criterion::{criterion_group, criterion_main, Criterion};
 use grapher::{graph::Graph, simgraph::SimGraph};
 
-const NODE: [u32; 7] = [1, 10, 100, 500, 1000, 2500, 5000];
+const NODE: [u32; 13] = [
+    1, 10, 50, 100, 250, 500, 750, 1000, 1250, 2500, 3250, 4000, 5000,
+];
 
 fn setup(g: &mut Graph<u32>, node_count: u32) {
     for i in 0..node_count {
