@@ -127,12 +127,15 @@ where
 
         let handle = thread::spawn(move || {
             let mut force_vec: Vec<[f32; 2]> = vec![[0.0, 0.0]; node_count];
+            println!("DDDD");
             let graph_read_guard = graph.read().unwrap();
 
             for i in start_index..end_index {
                 let n1 = graph_read_guard.get_node_by_index(i);
                 if repel_force {
+                    println!("AAA");
                     let node_approximations = quadtree.get_mass(&n1.position);
+                    println!("BBB");
                     for node_approximation in node_approximations {
                         let node_approximation_particle = Node {
                             data: n1.data.clone(),
@@ -147,13 +150,16 @@ where
                         force_vec[i][0] += repel_force[0];
                         force_vec[i][1] += repel_force[1];
                     }
+                    println!("CCC");
                 }
+
                 if gravity {
                     let gravity_force = Self::compute_center_gravity(gravity_force, &n1);
                     force_vec[i][0] += gravity_force[0];
                     force_vec[i][1] += gravity_force[1];
                 }
             }
+
             {
                 let mut l = vec_arc.lock().unwrap();
 
@@ -167,8 +173,8 @@ where
         handle
     }
 
-    fn build_quadtree(graph: Arc<RwLock<Graph<T>>>) -> Box<QuadTree<usize>> {
-        let mut quadtree = Box::new(QuadTree::new());
+    fn build_quadtree(graph: Arc<RwLock<Graph<T>>>) -> QuadTree<usize> {
+        let mut quadtree = QuadTree::new();
         let graph_read_guard = graph.read().unwrap();
 
         let mut max_x = -INFINITY;
@@ -188,7 +194,7 @@ where
         let boundary = Rectangle::new([min_x + 0.5 * w, min_y + 0.5 * h], w, h);
 
         for (i, n) in graph_read_guard.get_node_iter().enumerate() {
-            quadtree.add_node(i, &n.position, &n.mass, &boundary, &mut 0);
+            quadtree.add_node(i, n.position.clone(), n.mass, &boundary);
         }
         quadtree
     }

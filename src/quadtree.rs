@@ -1,6 +1,4 @@
-use std::borrow::BorrowMut;
-
-#[derive(Debug, PartialEq)]
+#[derive(Debug)]
 pub enum QuadTree<T> {
     Leaf {
         data: T,
@@ -9,7 +7,7 @@ pub enum QuadTree<T> {
         boundary: Rectangle,
     },
     Root {
-        children: [Box<QuadTree<T>>; 4],
+        children: Vec<Box<QuadTree<T>>>,
         mass_location: [f32; 2],
         node_mass: f32,
         boundary: Rectangle,
@@ -25,9 +23,9 @@ where
         Self::Empty
     }
 
-    fn new_root(boundary: &Rectangle) -> Self {
+    fn new_root(boundary: Rectangle) -> Self {
         Self::Root {
-            children: [
+            children: vec![
                 Box::new(QuadTree::Empty),
                 Box::new(QuadTree::Empty),
                 Box::new(QuadTree::Empty),
@@ -35,26 +33,25 @@ where
             ],
             mass_location: [0.0, 0.0],
             node_mass: 0.0,
-            boundary: boundary.clone(),
+            boundary,
         }
     }
 
     pub fn add_node(
-        self: &mut Box<Self>,
+        &mut self,
         data_in: T,
-        loc_in: &[f32; 2],
-        mass_in: &f32,
+        loc_in: [f32; 2],
+        mass_in: f32,
         boundary_in: &Rectangle,
-        depth: &mut u32,
     ) {
-        match self.as_mut() {
+        match self {
             Self::Empty => {
-                *self = Box::new(Self::Leaf {
+                *self = Self::Leaf {
                     data: data_in,
-                    loc: *loc_in,
-                    mass: *mass_in,
+                    loc: loc_in,
+                    mass: mass_in,
                     boundary: boundary_in.clone(),
-                })
+                }
             }
             Self::Leaf {
                 data,
@@ -62,9 +59,9 @@ where
                 mass,
                 boundary,
             } => {
-                let mut root = Box::new(Self::new_root(boundary));
-                root.add_node(data.to_owned(), loc, mass, &boundary, depth);
-                root.add_node(data_in.to_owned(), loc_in, mass_in, &boundary, depth);
+                let mut root = Self::new_root(boundary.clone());
+                root.add_node(data_in, loc_in, mass_in, boundary);
+                root.add_node(data.to_owned(), loc.to_owned(), mass.to_owned(), boundary);
                 *self = root;
             }
             Self::Root {
@@ -78,121 +75,10 @@ where
                 mass_location[0] += loc_in[0] * mass_in;
                 mass_location[1] += loc_in[1] * mass_in;
                 *node_mass += mass_in;
-                println!("{}", depth);
-                *depth += 1;
-                if *depth < 200 {
-                    child.add_node(data_in, loc_in, mass_in, &small_boundary, depth);
-                }
+                child.add_node(data_in, loc_in, mass_in, &small_boundary);
             }
         }
     }
-
-    /*pub fn add_node_iter(
-        &mut self,
-        data_in: T,
-        loc_in: &[f32; 2],
-        mass_in: &f32,
-        boundary_in: &Rectangle,
-        depth: &mut u32,
-    ) {
-        let mut current_node = self;
-        let mut second = None;
-        loop {
-            match current_node {
-                QuadTree::Empty => {
-                    *self = Self::Leaf {
-                        data: data_in.clone(),
-                        loc: *loc_in,
-                        mass: *mass_in,
-                        boundary: boundary_in.clone(),
-                    };
-                    return;
-                }
-                Self::Leaf {
-                    data,
-                    loc,
-                    mass,
-                    boundary,
-                } => {
-                    let mut root_node = QuadTree::new_root(&boundary);
-
-                    if let QuadTree::Root {
-                        children,
-                        mass_location,
-                        node_mass,
-                        boundary,
-                    } = root_node.borrow_mut()
-                    {
-                        let (small_boundary_prev, rect_prev) = boundary.get_section(&loc);
-                        let (small_boundary, rect) = boundary.get_section(loc_in);
-                        if rect_prev == rect {
-                            second = Some((data.to_owned(), *loc, *mass, boundary_in.clone()));
-                        } else {
-                            mass_location[0] += loc[0] * *mass;
-                            mass_location[1] += loc[1] * *mass;
-                            *node_mass += *mass;
-
-                            mass_location[0] += loc_in[0] * mass_in;
-                            mass_location[1] += loc_in[1] * mass_in;
-                            *node_mass += mass_in;
-
-                            children[rect_prev as usize] = Box::new(Self::Leaf {
-                                data: data.to_owned(),
-                                loc: *loc,
-                                mass: *mass,
-                                boundary: small_boundary_prev,
-                            });
-                            children[rect as usize] = Box::new(Self::Leaf {
-                                data: data_in.clone(),
-                                loc: *loc_in,
-                                mass: *mass_in,
-                                boundary: small_boundary,
-                            });
-                        }
-                    }
-                    current_node = &mut root_node;
-                }
-                Self::Root {
-                    children,
-                    mass_location,
-                    node_mass,
-                    boundary,
-                } => {
-                    mass_location[0] += loc_in[0] * mass_in;
-                    mass_location[1] += loc_in[1] * mass_in;
-                    *node_mass += mass_in;
-
-                    let (small_boundary, rect) = boundary.get_section(loc_in);
-                    let mut out = current_node;
-
-                    match *children[rect as usize] {
-                        Self::Empty => {
-                            children[rect as usize] = Box::new(Self::Leaf {
-                                data: data_in.clone(),
-                                loc: *loc_in,
-                                mass: *mass_in,
-                                boundary: small_boundary,
-                            });
-                        }
-                        Self::Leaf {
-                            data,
-                            loc,
-                            mass,
-                            boundary,
-                        } => {
-                            current_node = &mut children[rect as usize];
-                        }
-                        QuadTree::Root {
-                            children,
-                            mass_location,
-                            node_mass,
-                            boundary,
-                        } => {}
-                    }
-                }
-            }
-        }
-    }*/
 
     pub fn get_mass(&self, loc: &[f32; 2]) -> Vec<([f32; 2], f32)> {
         match self {
@@ -235,7 +121,7 @@ where
     }
 }
 
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug)]
 pub struct Rectangle {
     pub center: [f32; 2],
     pub width: f32,
@@ -250,7 +136,7 @@ impl Rectangle {
             height,
         }
     }
-    fn get_section(&self, loc: &[f32; 2]) -> (Rectangle, RectangleSection) {
+    fn get_section(&self, loc: [f32; 2]) -> (Rectangle, RectangleSection) {
         let sect;
         let mut newx = self.center[0];
         let mut newy = self.center[1];
@@ -287,7 +173,7 @@ impl Rectangle {
     }
 }
 
-#[derive(Debug, PartialEq, Clone, Copy)]
+#[derive(Debug)]
 enum RectangleSection {
     TL = 0,
     TR = 1,
