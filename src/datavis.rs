@@ -106,7 +106,7 @@ where
         let mut camera = [0.0, 0.0];
         let mut cursor = winit::dpi::PhysicalPosition::new(0.0, 0.0);
 
-        let toggle_sim = Arc::new(RwLock::new(false));
+        let toggle_sim = Arc::new(RwLock::new(true));
         let mut toggle_quadtree = false;
         let mut sim = self.sim.clone();
 
@@ -116,10 +116,12 @@ where
 
         let graph_clone = Arc::clone(&graph);
         let toggle_sim_clone = Arc::clone(&toggle_sim);
+        let mut c = 0;
         thread::spawn(move || loop {
             let toggle_sim_read_guard = toggle_sim_clone.read().unwrap();
             if *toggle_sim_read_guard {
                 sim.simulation_step(Arc::clone(&graph_clone));
+                c += 1;
             }
         });
 
@@ -390,10 +392,10 @@ where
         let h = max_y - min_y;
         let boundary = Rectangle::new([min_x + 0.5 * w, min_y + 0.5 * h], w, h);
 
-        let mut quadtree = QuadTree::<usize>::new();
+        let mut quadtree = Box::new(QuadTree::<usize>::new());
 
         for (i, node) in graph_read_guard.get_node_iter().enumerate() {
-            quadtree.add_node(i, node.position, node.mass, &boundary);
+            quadtree.add_node(i, &node.position, &node.mass, &boundary, &mut 0);
         }
         Self::get_qt_vertex(&quadtree, &mut shape, camera, scale);
         let l = [-1.0, 1.0];
