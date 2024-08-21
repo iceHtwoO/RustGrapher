@@ -1,3 +1,4 @@
+use core::f32::INFINITY;
 use std::{
     fmt::Debug,
     sync::{Arc, Mutex, RwLock},
@@ -6,7 +7,10 @@ use std::{
 
 use rand::Rng;
 
-use crate::graph::{Graph, Node};
+use crate::{
+    graph::{Graph, Node},
+    quadtree::{self, QuadTree, Rectangle},
+};
 
 #[derive(Clone, Debug)]
 pub struct SimGraph<T>
@@ -119,28 +123,34 @@ where
         let repel_force = self.repel_force;
         let gravity = self.gravity;
         let gravity_force = self.gravity_force;
+        let quadtree = Self::build_quadtree(Arc::clone(&graph));
 
         let handle = thread::spawn(move || {
             let mut force_vec: Vec<[f32; 2]> = vec![[0.0, 0.0]; node_count];
+            println!("DDDD");
             let graph_read_guard = graph.read().unwrap();
 
             for i in start_index..end_index {
                 let n1 = graph_read_guard.get_node_by_index(i);
-
                 if repel_force {
-                    for j in i..node_count {
-                        if i == j {
-                            continue;
-                        }
-
-                        let n2 = graph_read_guard.get_node_by_index(j);
-                        let repel_force = Self::repel_force(repel_force_const, &n1, &n2);
+                    println!("AAA");
+                    let node_approximations = quadtree.get_mass(&n1.position);
+                    println!("BBB");
+                    for node_approximation in node_approximations {
+                        let node_approximation_particle = Node {
+                            data: n1.data.clone(),
+                            position: node_approximation.0,
+                            velocity: [0.0, 0.0],
+                            mass: node_approximation.1,
+                            fixed: false,
+                        };
+                        let repel_force =
+                            Self::repel_force(repel_force_const, &n1, &node_approximation_particle);
 
                         force_vec[i][0] += repel_force[0];
                         force_vec[i][1] += repel_force[1];
-                        force_vec[j][0] -= repel_force[0];
-                        force_vec[j][1] -= repel_force[1];
                     }
+                    println!("CCC");
                 }
 
                 if gravity {
@@ -161,6 +171,32 @@ where
         });
 
         handle
+    }
+
+    fn build_quadtree(graph: Arc<RwLock<Graph<T>>>) -> QuadTree<usize> {
+        let mut quadtree = QuadTree::new();
+        let graph_read_guard = graph.read().unwrap();
+
+        let mut max_x = -INFINITY;
+        let mut min_x = INFINITY;
+        let mut max_y = -INFINITY;
+        let mut min_y = INFINITY;
+
+        for node in graph_read_guard.get_node_iter() {
+            max_x = max_x.max(node.position[0]);
+            max_y = max_y.max(node.position[1]);
+            min_x = min_x.min(node.position[0]);
+            min_y = min_y.min(node.position[1]);
+        }
+
+        let w = max_x - min_x;
+        let h = max_y - min_y;
+        let boundary = Rectangle::new([min_x + 0.5 * w, min_y + 0.5 * h], w, h);
+
+        for (i, n) in graph_read_guard.get_node_iter().enumerate() {
+            quadtree.add_node(i, n.position.clone(), n.mass, &boundary);
+        }
+        quadtree
     }
 
     fn apply_node_force(
@@ -251,9 +287,6 @@ where
     }
 
     fn repel_force(repel_force_const: f32, n1: &Node<T>, n2: &Node<T>) -> [f32; 2] {
-        if n1 == n2 {
-            return [0.0, 0.0];
-        }
         let vec = Self::compute_direction_vector(n1, n2);
         let dist = Self::compute_distance(n1, n2);
         let mut force = [0.0, 0.0];

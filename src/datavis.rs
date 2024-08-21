@@ -10,7 +10,7 @@ use std::{
 
 use crate::{
     graph::Graph,
-    quadtree::{QuadTree, Rectangle},
+    quadtree::{self, QuadTree, Rectangle},
     simgraph::SimGraph,
 };
 use glium::{glutin::surface::WindowSurface, implement_vertex, Display, Frame, Surface};
@@ -107,6 +107,7 @@ where
         let mut cursor = winit::dpi::PhysicalPosition::new(0.0, 0.0);
 
         let toggle_sim = Arc::new(RwLock::new(false));
+        let mut toggle_quadtree = false;
         let mut sim = self.sim.clone();
 
         let self_arc = Arc::new(Mutex::new(self));
@@ -140,7 +141,7 @@ where
                     }
                     WindowEvent::KeyboardInput { input, .. } => match input.virtual_keycode {
                         Some(winit::event::VirtualKeyCode::Space) => {
-                            if last_pause.elapsed().as_millis() >= 100 {
+                            if last_pause.elapsed().as_millis() >= 400 {
                                 let mut toggle_sim_write_guard = toggle_sim.write().unwrap();
                                 *toggle_sim_write_guard = !(*toggle_sim_write_guard);
                                 last_pause = Instant::now();
@@ -148,6 +149,12 @@ where
                         }
                         Some(winit::event::VirtualKeyCode::Return) => {
                             camera = graph.read().unwrap().avg_pos();
+                        }
+                        Some(winit::event::VirtualKeyCode::Q) => {
+                            if last_pause.elapsed().as_millis() >= 400 {
+                                toggle_quadtree = !toggle_quadtree;
+                                last_pause = Instant::now()
+                            }
                         }
                         _ => (),
                     },
@@ -174,7 +181,13 @@ where
                 } else if cursor.y > window.inner_size().height as f64 * 0.9 {
                     camera[1] -= camera_factor;
                 }
-                self_mutex.draw_graph(&display_arc, Arc::clone(&graph), &scale, &camera);
+                self_mutex.draw_graph(
+                    &display_arc,
+                    Arc::clone(&graph),
+                    &scale,
+                    &camera,
+                    toggle_quadtree,
+                );
             }
         });
     }
@@ -185,6 +198,7 @@ where
         graph: Arc<RwLock<Graph<T>>>,
         scale: &f32,
         camera: &[f32; 2],
+        enable_quadtree: bool,
     ) {
         let mut target = display.draw();
         target.clear_color(0.0, 0.0, 0.0, 1.0);
@@ -218,14 +232,16 @@ where
             &max_m,
             &camera,
         );
-        self.draw_quadtree(
-            Arc::clone(&graph),
-            &mut target,
-            display,
-            &scale,
-            &max_m,
-            &camera,
-        );
+        if enable_quadtree {
+            self.draw_quadtree(
+                Arc::clone(&graph),
+                &mut target,
+                display,
+                &scale,
+                &max_m,
+                &camera,
+            );
+        }
 
         target.finish().unwrap();
     }

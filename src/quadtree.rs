@@ -23,7 +23,7 @@ where
         Self::Empty
     }
 
-    fn new_root(loc: &[f32; 2], mass: &f32, boundary: Rectangle) -> Self {
+    fn new_root(boundary: Rectangle) -> Self {
         Self::Root {
             children: vec![
                 Box::new(QuadTree::Empty),
@@ -31,8 +31,8 @@ where
                 Box::new(QuadTree::Empty),
                 Box::new(QuadTree::Empty),
             ],
-            mass_location: loc.clone(),
-            node_mass: mass.clone(),
+            mass_location: [0.0, 0.0],
+            node_mass: 0.0,
             boundary,
         }
     }
@@ -59,7 +59,7 @@ where
                 mass,
                 boundary,
             } => {
-                let mut root = Self::new_root(loc, mass, boundary.clone());
+                let mut root = Self::new_root(boundary.clone());
                 root.add_node(data_in, loc_in, mass_in, boundary);
                 root.add_node(data.to_owned(), loc.to_owned(), mass.to_owned(), boundary);
                 *self = root;
@@ -95,7 +95,7 @@ where
                 );
 
                 let mut particles = Vec::new();
-                if s / d > 0.5 {
+                if s / d > 0.75 {
                     // θ = 0.5
                     for child in children {
                         particles.append(&mut child.get_mass(loc));
