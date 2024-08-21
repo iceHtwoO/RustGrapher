@@ -132,13 +132,13 @@ where
             for i in start_index..end_index {
                 let n1 = graph_read_guard.get_node_by_index(i);
                 if repel_force {
-                    let node_approximations = quadtree.get_mass(&n1.position);
+                    let node_approximations = quadtree.get_stack(&n1.position, 0.5);
                     for node_approximation in node_approximations {
                         let node_approximation_particle = Node {
                             data: n1.data.clone(),
-                            position: node_approximation.0,
+                            position: node_approximation.get_position(),
                             velocity: [0.0, 0.0],
-                            mass: node_approximation.1,
+                            mass: node_approximation.mass,
                             fixed: false,
                         };
                         let repel_force =
@@ -169,8 +169,7 @@ where
         handle
     }
 
-    fn build_quadtree(graph: Arc<RwLock<Graph<T>>>) -> QuadTree<usize> {
-        let mut quadtree = QuadTree::new();
+    fn build_quadtree(graph: Arc<RwLock<Graph<T>>>) -> QuadTree {
         let graph_read_guard = graph.read().unwrap();
 
         let mut max_x = -INFINITY;
@@ -188,9 +187,10 @@ where
         let w = max_x - min_x;
         let h = max_y - min_y;
         let boundary = Rectangle::new([min_x + 0.5 * w, min_y + 0.5 * h], w, h);
+        let mut quadtree = QuadTree::new(boundary.clone());
 
         for (i, n) in graph_read_guard.get_node_iter().enumerate() {
-            quadtree.add_node(i, n.position.clone(), n.mass, &boundary);
+            quadtree.insert(n.position.clone(), n.mass, &boundary);
         }
         quadtree
     }

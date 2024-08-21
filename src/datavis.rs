@@ -5,7 +5,7 @@ use std::{
     marker::PhantomData,
     sync::{Arc, Mutex, RwLock},
     thread,
-    time::Instant,
+    time::{Duration, Instant},
 };
 
 use crate::{
@@ -117,6 +117,7 @@ where
         let graph_clone = Arc::clone(&graph);
         let toggle_sim_clone = Arc::clone(&toggle_sim);
         thread::spawn(move || loop {
+            thread::sleep(Duration::from_millis(100));
             let toggle_sim_read_guard = toggle_sim_clone.read().unwrap();
             if *toggle_sim_read_guard {
                 sim.simulation_step(Arc::clone(&graph_clone));
@@ -132,7 +133,11 @@ where
                     }
                     WindowEvent::MouseWheel { delta, .. } => match delta {
                         winit::event::MouseScrollDelta::LineDelta(_, y) => {
-                            scroll_scale += y as f32 * 0.5;
+                            if y < 0.0 {
+                                scroll_scale *= 0.75;
+                            } else if y > 0.0 {
+                                scroll_scale *= 1.25;
+                            }
                         }
                         _ => (),
                     },
@@ -390,14 +395,14 @@ where
         let h = max_y - min_y;
         let boundary = Rectangle::new([min_x + 0.5 * w, min_y + 0.5 * h], w, h);
 
-        let mut quadtree = QuadTree::<usize>::new();
+        let mut quadtree = QuadTree::new(boundary.clone());
 
         for (i, node) in graph_read_guard.get_node_iter().enumerate() {
-            quadtree.add_node(i, node.position, node.mass, &boundary);
+            quadtree.insert(node.position, node.mass, &boundary);
         }
         Self::get_qt_vertex(&quadtree, &mut shape, camera, scale);
         let l = [-1.0, 1.0];
-        let f = quadtree.get_mass(&l);
+        let f = quadtree.get_stack(&l, 0.75);
 
         let mut pos = l;
 
@@ -415,7 +420,8 @@ where
         ));
 
         for v in f {
-            let mut pos = v.0;
+            //println!("{:?}", v);
+            let mut pos = v.get_position();
 
             pos[0] -= camera[0];
             pos[1] -= camera[1];
@@ -445,50 +451,42 @@ where
             .unwrap();
     }
 
-    fn get_qt_vertex(
-        quadtree: &QuadTree<usize>,
-        shape: &mut Vec<Vertex>,
-        camera: &[f32; 2],
-        scale: &f32,
-    ) {
-        match quadtree {
-            QuadTree::Root {
-                children, boundary, ..
-            } => {
-                for child in children {
-                    Self::get_qt_vertex(child, shape, camera, scale);
-                }
-                let mut pos = boundary.center;
-
-                pos[0] -= camera[0];
-                pos[1] -= camera[1];
-
-                pos[0] *= scale;
-                pos[1] *= scale;
-                shape.append(&mut shapes::rectangle_lines(
-                    pos,
-                    [0.0, 0.0, 1.0, 1.0],
-                    boundary.width * scale * 0.5,
-                    boundary.height * scale * 0.5,
-                ));
+    fn get_qt_vertex(quadtree: &QuadTree, shape: &mut Vec<Vertex>, camera: &[f32; 2], scale: &f32) {
+        for child in quadtree.children.iter() {
+            match child {
+                Some(c) => Self::get_qt_vertex(&c, shape, camera, scale),
+                None => (),
             }
-            QuadTree::Leaf { boundary, .. } => {
-                let mut pos = boundary.center;
-
-                pos[0] -= camera[0];
-                pos[1] -= camera[1];
-
-                pos[0] *= scale;
-                pos[1] *= scale;
-                shape.append(&mut shapes::rectangle_lines(
-                    pos,
-                    [0.0, 0.0, 1.0, 1.0],
-                    boundary.width * scale * 0.5,
-                    boundary.height * scale * 0.5,
-                ));
-            }
-            _ => (),
         }
+        let boundary = quadtree.boundary.clone();
+
+        let mut pos = quadtree.get_position();
+
+        pos[0] -= camera[0];
+        pos[1] -= camera[1];
+
+        pos[0] *= scale;
+        pos[1] *= scale;
+
+        shape.append(&mut shapes::rectangle_lines(
+            pos,
+            [1.0, 1.0, 0.0, 1.0],
+            1.0 * scale * 0.5,
+            1.0 * scale * 0.5,
+        ));
+        let mut pos = boundary.center;
+
+        pos[0] -= camera[0];
+        pos[1] -= camera[1];
+
+        pos[0] *= scale;
+        pos[1] *= scale;
+        shape.append(&mut shapes::rectangle_lines(
+            pos,
+            [0.0, 0.0, 1.0, 1.0],
+            boundary.width * scale * 0.5,
+            boundary.height * scale * 0.5,
+        ));
     }
 
     pub fn plot_data(&self) {
