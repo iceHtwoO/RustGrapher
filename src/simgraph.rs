@@ -127,15 +127,12 @@ where
 
         let handle = thread::spawn(move || {
             let mut force_vec: Vec<[f32; 2]> = vec![[0.0, 0.0]; node_count];
-            println!("DDDD");
             let graph_read_guard = graph.read().unwrap();
 
             for i in start_index..end_index {
                 let n1 = graph_read_guard.get_node_by_index(i);
                 if repel_force {
-                    println!("AAA");
                     let node_approximations = quadtree.get_mass(&n1.position);
-                    println!("BBB");
                     for node_approximation in node_approximations {
                         let node_approximation_particle = Node {
                             data: n1.data.clone(),
@@ -150,7 +147,6 @@ where
                         force_vec[i][0] += repel_force[0];
                         force_vec[i][1] += repel_force[1];
                     }
-                    println!("CCC");
                 }
 
                 if gravity {
