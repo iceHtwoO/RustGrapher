@@ -1,7 +1,12 @@
 use std::sync::{Arc, RwLock};
 
-use criterion::{criterion_group, criterion_main, Criterion};
-use grapher::{graph::Graph, simgraph::SimGraph};
+use criterion::{black_box, criterion_group, criterion_main, Criterion};
+use grapher::{
+    graph::Graph,
+    quadtree::{QuadTree, Rectangle},
+    simgraph::SimGraph,
+};
+use rand::Rng;
 
 const NODE: [u32; 13] = [
     1, 10, 50, 100, 250, 500, 750, 1000, 1250, 2500, 3250, 4000, 5000,
@@ -74,11 +79,63 @@ fn simulation_gravity(c: &mut Criterion) {
     }
 }
 
+fn quadtree_insert(c: &mut Criterion) {
+    let w = 1000.0;
+    let bb = Rectangle::new([0.0, 0.0], w, w);
+    let mut qt = QuadTree::new(bb.clone());
+    let mut rng = rand::thread_rng();
+    c.bench_function("Quadtree insert", |b| {
+        b.iter(|| {
+            qt.insert(
+                black_box([
+                    rng.gen_range((-w / 2.0)..(w / 2.0)),
+                    rng.gen_range((-w / 2.0)..(w / 2.0)),
+                ]),
+                rng.gen_range(0.0..2000.0),
+                &bb,
+            )
+        });
+    });
+}
+
+fn quadtree_get_stack(c: &mut Criterion) {
+    let w = 1000.0;
+    let bb = Rectangle::new([0.0, 0.0], w, w);
+    let mut rng = rand::thread_rng();
+    let mut group = c.benchmark_group("QuadTree get");
+    for i in NODE {
+        let mut qt = QuadTree::new(bb.clone());
+        for n in 0..i {
+            qt.insert(
+                black_box([
+                    rng.gen_range((-w / 2.0)..(w / 2.0)),
+                    rng.gen_range((-w / 2.0)..(w / 2.0)),
+                ]),
+                rng.gen_range(0.0..2000.0),
+                &bb,
+            )
+        }
+        group.bench_function(format!("Nodes: {}", i), |b| {
+            b.iter(|| {
+                qt.get_stack(
+                    black_box(&[
+                        rng.gen_range((-w / 2.0)..(w / 2.0)),
+                        rng.gen_range((-w / 2.0)..(w / 2.0)),
+                    ]),
+                    0.75,
+                )
+            });
+        });
+    }
+}
+
 criterion_group!(
     simulation,
     simulation_all_enabled,
     simulation_repel,
     simulation_spring,
-    simulation_gravity
+    simulation_gravity,
+    quadtree_insert,
+    quadtree_get_stack
 );
 criterion_main!(simulation);

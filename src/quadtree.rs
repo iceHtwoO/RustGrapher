@@ -1,7 +1,5 @@
-use std::marker::PhantomData;
-
+const EPSILON: f32 = 1e-3;
 #[derive(Debug)]
-
 pub struct QuadTree {
     pub children: Vec<Option<Self>>,
     pub boundary: Rectangle,
@@ -64,7 +62,13 @@ impl QuadTree {
             let (mut new_bb_leaf, mut quadrent_leaf) = parent.boundary.get_section(&l_pos);
 
             while quadrent == quadrent_leaf {
-                //TODO: Handle Case where both are on same x and y
+                // If child is too close, treat it as one
+                if (leaf_position[0] - position[0]).abs() < EPSILON
+                    && (leaf_position[1] - position[1]).abs() < EPSILON
+                {
+                    return;
+                }
+
                 parent.children[quadrent_leaf as usize] =
                     Some(QuadTree::new_leaf(leaf_position, leaf_mass, new_bb_leaf));
                 parent = parent.children[quadrent_leaf as usize].as_mut().unwrap();
