@@ -37,12 +37,6 @@ fn main() {
 
     graph_wiki(&mut g);
 
-    /*let mut g = Graph::<u32>::new();
-    g.add_node_pos(1, [-5.0, -5.0], true, 1.0);
-    g.add_node_pos(2, [5.0, 5.0], true, 1.0);
-    g.add_node_pos(3, [7.1, 7.1], true, 1.0);
-    g.add_node_pos(3, [9.1, -7.1], true, 1.0);*/
-
     g.change_mass_based_on_incoming();
     let datavis = DataVis::new();
     datavis.create_window(g);

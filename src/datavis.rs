@@ -117,9 +117,10 @@ where
         let graph_clone = Arc::clone(&graph);
         let toggle_sim_clone = Arc::clone(&toggle_sim);
         thread::spawn(move || loop {
-            thread::sleep(Duration::from_millis(100));
             let toggle_sim_read_guard = toggle_sim_clone.read().unwrap();
-            if *toggle_sim_read_guard {
+            let sim_toggle = *toggle_sim_read_guard;
+            drop(toggle_sim_read_guard);
+            if sim_toggle {
                 sim.simulation_step(Arc::clone(&graph_clone));
             }
         });
@@ -397,45 +398,10 @@ where
 
         let mut quadtree = QuadTree::new(boundary.clone());
 
-        for (i, node) in graph_read_guard.get_node_iter().enumerate() {
+        for node in graph_read_guard.get_node_iter() {
             quadtree.insert(node.position, node.mass, &boundary);
         }
         Self::get_qt_vertex(&quadtree, &mut shape, camera, scale);
-        let l = [-1.0, 1.0];
-        let f = quadtree.get_stack(&l, 0.75);
-
-        let mut pos = l;
-
-        pos[0] -= camera[0];
-        pos[1] -= camera[1];
-
-        pos[0] *= scale;
-        pos[1] *= scale;
-
-        shape.append(&mut shapes::rectangle_lines(
-            pos,
-            [0.5, 1.0, 0.9, 1.0],
-            0.7 * scale,
-            0.7 * scale,
-        ));
-
-        for v in f {
-            //println!("{:?}", v);
-            let mut pos = v.get_position();
-
-            pos[0] -= camera[0];
-            pos[1] -= camera[1];
-
-            pos[0] *= scale;
-            pos[1] *= scale;
-
-            shape.append(&mut shapes::rectangle_lines(
-                pos,
-                [0.5, 1.0, 0.1, 1.0],
-                0.7 * scale,
-                0.7 * scale,
-            ));
-        }
 
         let vertex_buffer = glium::VertexBuffer::new(display, &shape).unwrap();
         let indices = glium::index::NoIndices(glium::index::PrimitiveType::LinesList);
@@ -460,20 +426,6 @@ where
         }
         let boundary = quadtree.boundary.clone();
 
-        let mut pos = quadtree.get_position();
-
-        pos[0] -= camera[0];
-        pos[1] -= camera[1];
-
-        pos[0] *= scale;
-        pos[1] *= scale;
-
-        shape.append(&mut shapes::rectangle_lines(
-            pos,
-            [1.0, 1.0, 0.0, 1.0],
-            1.0 * scale * 0.5,
-            1.0 * scale * 0.5,
-        ));
         let mut pos = boundary.center;
 
         pos[0] -= camera[0];

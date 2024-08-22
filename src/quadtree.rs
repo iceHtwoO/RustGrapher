@@ -105,7 +105,6 @@ impl QuadTree {
     pub fn get_stack<'a>(&'a self, position: &[f32; 2], theta: f32) -> Vec<&'a Self> {
         let mut nodes: Vec<&QuadTree> = vec![];
         let mut stack = vec![self];
-
         while !stack.is_empty() {
             let parent = match stack.pop() {
                 Some(p) => p,

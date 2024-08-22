@@ -27,6 +27,7 @@ where
     repel_force_const: f32,
     damping: f32,
     phantom: std::marker::PhantomData<T>,
+    quadtree_theta: f32,
 }
 
 impl<T> SimGraph<T>
@@ -45,6 +46,7 @@ where
             delta_time: 0.005,
             damping: 0.9,
             phantom: std::marker::PhantomData,
+            quadtree_theta: 0.25,
         }
     }
 
@@ -60,6 +62,7 @@ where
             delta_time: 0.005,
             damping: 0.9,
             phantom: std::marker::PhantomData,
+            quadtree_theta: 0.5,
         }
     }
 
@@ -124,6 +127,7 @@ where
         let gravity = self.gravity;
         let gravity_force = self.gravity_force;
         let quadtree = Self::build_quadtree(Arc::clone(&graph));
+        let theta = self.quadtree_theta;
 
         let handle = thread::spawn(move || {
             let mut force_vec: Vec<[f32; 2]> = vec![[0.0, 0.0]; node_count];
@@ -132,7 +136,7 @@ where
             for i in start_index..end_index {
                 let n1 = graph_read_guard.get_node_by_index(i);
                 if repel_force {
-                    let node_approximations = quadtree.get_stack(&n1.position, 0.5);
+                    let node_approximations = quadtree.get_stack(&n1.position, theta);
                     for node_approximation in node_approximations {
                         let node_approximation_particle = Node {
                             data: n1.data.clone(),
@@ -157,11 +161,11 @@ where
             }
 
             {
-                let mut l = vec_arc.lock().unwrap();
+                let mut force_list = vec_arc.lock().unwrap();
 
                 for (i, force) in force_vec.into_iter().enumerate() {
-                    l[i][0] += force[0];
-                    l[i][1] += force[1];
+                    force_list[i][0] += force[0];
+                    force_list[i][1] += force[1];
                 }
             }
         });
@@ -273,8 +277,12 @@ where
     fn compute_spring_force(&self, n1: &Node<T>, n2: &Node<T>) -> [f32; 2] {
         let vec = Self::compute_direction_vector(n1, n2);
         let dist = Self::compute_distance(n1, n2);
+
         let force_magnitude = self.spring_stiffness * (dist - self.spring_default_len);
-        let unit_vec = [vec[0] / dist, vec[1] / dist];
+        let mut unit_vec = [vec[0] / dist, vec[1] / dist];
+        if unit_vec[0].is_nan() || unit_vec[1].is_nan() {
+            unit_vec = [1.0, 1.0];
+        }
 
         let force_x = -force_magnitude * unit_vec[0];
         let force_y = -force_magnitude * unit_vec[1];
