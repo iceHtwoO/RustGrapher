@@ -10,6 +10,7 @@ use rand::Rng;
 use crate::{
     graph::{Graph, Node},
     quadtree::{BoundingBox2D, QuadTree},
+    vectors::Vector2D,
 };
 
 #[derive(Clone, Debug)]
@@ -68,7 +69,7 @@ where
 
     pub fn simulation_step(&mut self, graph: Arc<RwLock<Graph<T>>>) {
         let f_vec = Arc::new(Mutex::new(vec![
-            [0.0, 0.0];
+            Vector2D::new([0.0, 0.0]);
             graph.read().unwrap().get_node_count()
         ]));
 
@@ -78,7 +79,7 @@ where
         self.update_node_position(Arc::clone(&graph));
     }
 
-    fn calculate_forces(&mut self, g: Arc<RwLock<Graph<T>>>, f_vec: Arc<Mutex<Vec<[f32; 2]>>>) {
+    fn calculate_forces(&mut self, g: Arc<RwLock<Graph<T>>>, f_vec: Arc<Mutex<Vec<Vector2D>>>) {
         if self.repel_force || self.gravity {
             let mut handles = vec![];
 
@@ -119,7 +120,7 @@ where
         start_index: usize,
         end_index: usize,
         node_count: usize,
-        vec_arc: Arc<Mutex<Vec<[f32; 2]>>>,
+        vec_arc: Arc<Mutex<Vec<Vector2D>>>,
         graph: Arc<RwLock<Graph<T>>>,
     ) -> JoinHandle<()> {
         let repel_force_const = self.repel_force_const;
@@ -130,7 +131,7 @@ where
         let theta = self.quadtree_theta;
 
         let handle = thread::spawn(move || {
-            let mut force_vec: Vec<[f32; 2]> = vec![[0.0, 0.0]; node_count];
+            let mut force_vec: Vec<Vector2D> = vec![Vector2D::new([0.0, 0.0]); node_count];
             let graph_read_guard = graph.read().unwrap();
 
             for i in start_index..end_index {
@@ -164,8 +165,7 @@ where
                 let mut force_list = vec_arc.lock().unwrap();
 
                 for (i, force) in force_vec.into_iter().enumerate() {
-                    force_list[i][0] += force[0];
-                    force_list[i][1] += force[1];
+                    force_list[i] += force;
                 }
             }
         });
@@ -202,12 +202,12 @@ where
     fn apply_node_force(
         &self,
         graph: Arc<RwLock<Graph<T>>>,
-        force_vec_arc: Arc<Mutex<Vec<[f32; 2]>>>,
+        force_vec_arc: Arc<Mutex<Vec<Vector2D>>>,
     ) {
         let mut graph_write_guard = graph.write().unwrap();
         let force_vec = force_vec_arc.lock().unwrap();
         for (i, n1) in graph_write_guard.get_node_mut_iter().enumerate() {
-            let node_force: [f32; 2] = force_vec[i];
+            let node_force = force_vec[i];
 
             n1.velocity[0] +=
                 force_vec[i][0].signum() * (node_force[0] / n1.mass).abs() * self.delta_time;
@@ -254,7 +254,7 @@ where
     fn add_graph_spring_forces(
         &self,
         graph: Arc<RwLock<Graph<T>>>,
-        force_vec_arc: Arc<Mutex<Vec<[f32; 2]>>>,
+        force_vec_arc: Arc<Mutex<Vec<Vector2D>>>,
     ) {
         let mut force_vec = force_vec_arc.lock().unwrap();
         let graph_arc = Arc::clone(&graph);
@@ -267,56 +267,52 @@ where
 
             let spring_force = self.compute_spring_force(n1, n2);
 
-            force_vec[edge.0][0] -= spring_force[0];
-            force_vec[edge.0][1] -= spring_force[1];
-            force_vec[edge.1][0] += spring_force[0];
-            force_vec[edge.1][1] += spring_force[1];
+            force_vec[edge.0] -= spring_force;
+            force_vec[edge.1] += spring_force;
         }
     }
 
-    fn compute_spring_force(&self, n1: &Node<T>, n2: &Node<T>) -> [f32; 2] {
+    fn compute_spring_force(&self, n1: &Node<T>, n2: &Node<T>) -> Vector2D {
         let vec = Self::compute_direction_vector(n1, n2);
         let dist = Self::compute_distance(n1, n2);
 
         let force_magnitude = self.spring_stiffness * (dist - self.spring_default_len);
-        let mut unit_vec = [vec[0] / dist, vec[1] / dist];
-        if unit_vec[0].is_nan() || unit_vec[1].is_nan() {
-            unit_vec = [1.0, 1.0];
-        }
+        let mut unit_vec = Vector2D::new([vec[0] / dist, vec[1] / dist]);
 
-        let force_x = -force_magnitude * unit_vec[0];
-        let force_y = -force_magnitude * unit_vec[1];
-
-        [force_x, force_y]
+        unit_vec.scalar(-force_magnitude);
+        unit_vec
     }
 
-    fn repel_force(repel_force_const: f32, n1: &Node<T>, n2: &Node<T>) -> [f32; 2] {
+    fn repel_force(repel_force_const: f32, n1: &Node<T>, n2: &Node<T>) -> Vector2D {
         let vec = Self::compute_direction_vector(n1, n2);
+        let mut dir_vec = Vector2D::new(vec);
         let dist = Self::compute_distance(n1, n2);
-        let mut force = [0.0, 0.0];
+        let mut force = Vector2D::new([0.0, 0.0]);
 
         let x_y_len = vec[0].abs() + vec[1].abs();
         if x_y_len == 0.0 || Self::compute_distance(n1, n2) < 0.1 {
-            return [
+            return Vector2D::new([
                 rand::thread_rng().gen_range(-1..1) as f32,
                 rand::thread_rng().gen_range(-1..1) as f32,
-            ];
+            ]);
         }
 
-        let f = -repel_force_const * (n1.mass * n2.mass).abs() / dist.powi(2);
+        let f = -repel_force_const * (n1.mass * n2.mass).abs() / (dir_vec.len() as f32).powi(2);
 
         if vec[0] != 0.0 {
-            force[0] += vec[0].signum() * f * (vec[0].abs() / x_y_len);
+            force[0] += f * (vec[0] / x_y_len);
         }
         if vec[1] != 0.0 {
-            force[1] += vec[1].signum() * f * (vec[1].abs() / x_y_len);
+            force[1] += f * (vec[1] / x_y_len);
         }
 
-        force
+        dir_vec.scalar(f / x_y_len);
+
+        dir_vec
     }
 
-    fn compute_center_gravity(gravity_force: f32, n1: &Node<T>) -> [f32; 2] {
-        let mut force = [0.0, 0.0];
+    fn compute_center_gravity(gravity_force: f32, n1: &Node<T>) -> Vector2D {
+        let mut force = Vector2D::new([0.0, 0.0]);
         if n1.position[0].is_finite() {
             force[0] = gravity_force * (-n1.position[0]) * n1.mass;
         }

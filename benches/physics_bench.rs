@@ -92,7 +92,6 @@ fn quadtree_insert(c: &mut Criterion) {
                     rng.gen_range((-w / 2.0)..(w / 2.0)),
                 ]),
                 rng.gen_range(0.0..2000.0),
-                &bb,
             )
         });
     });
@@ -112,7 +111,6 @@ fn quadtree_get_stack(c: &mut Criterion) {
                     rng.gen_range((-w / 2.0)..(w / 2.0)),
                 ]),
                 rng.gen_range(0.0..2000.0),
-                &bb,
             )
         }
         group.bench_function(format!("Nodes: {}", i), |b| {
