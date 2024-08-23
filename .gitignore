@@ -4,3 +4,7 @@
 .vscode/*
 !.vscode/tasks.json
 !.vscode/launch.json
+
+perf.data.*
+perf.data
+flamegraph.svg
