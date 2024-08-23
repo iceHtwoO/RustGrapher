@@ -3,7 +3,7 @@ use std::sync::{Arc, RwLock};
 use criterion::{black_box, criterion_group, criterion_main, Criterion};
 use grapher::{
     graph::Graph,
-    quadtree::{QuadTree, Rectangle},
+    quadtree::{BoundingBox2D, QuadTree},
     simgraph::SimGraph,
 };
 use rand::Rng;
@@ -81,7 +81,7 @@ fn simulation_gravity(c: &mut Criterion) {
 
 fn quadtree_insert(c: &mut Criterion) {
     let w = 1000.0;
-    let bb = Rectangle::new([0.0, 0.0], w, w);
+    let bb = BoundingBox2D::new([0.0, 0.0], w, w);
     let mut qt = QuadTree::new(bb.clone());
     let mut rng = rand::thread_rng();
     c.bench_function("Quadtree insert", |b| {
@@ -100,7 +100,7 @@ fn quadtree_insert(c: &mut Criterion) {
 
 fn quadtree_get_stack(c: &mut Criterion) {
     let w = 1000.0;
-    let bb = Rectangle::new([0.0, 0.0], w, w);
+    let bb = BoundingBox2D::new([0.0, 0.0], w, w);
     let mut rng = rand::thread_rng();
     let mut group = c.benchmark_group("QuadTree get");
     for i in NODE {

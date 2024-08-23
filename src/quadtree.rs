@@ -2,13 +2,13 @@ const EPSILON: f32 = 1e-3;
 #[derive(Debug)]
 pub struct QuadTree {
     pub children: Vec<Option<Self>>,
-    pub boundary: Rectangle,
+    pub boundary: BoundingBox2D,
     pub mass: f32,
     position: [f32; 2],
 }
 
 impl QuadTree {
-    pub fn new(boundary: Rectangle) -> Self {
+    pub fn new(boundary: BoundingBox2D) -> Self {
         Self {
             children: vec![None, None, None, None],
             boundary: boundary,
@@ -17,7 +17,7 @@ impl QuadTree {
         }
     }
 
-    fn new_leaf(position: [f32; 2], mass: f32, boundary: Rectangle) -> Self {
+    fn new_leaf(position: [f32; 2], mass: f32, boundary: BoundingBox2D) -> Self {
         Self {
             children: vec![None, None, None, None],
             boundary,
@@ -30,27 +30,27 @@ impl QuadTree {
         [self.position[0] / self.mass, self.position[1] / self.mass]
     }
 
-    pub fn insert(&mut self, position: [f32; 2], mass: f32, boundary: &Rectangle) {
+    pub fn insert(&mut self, position: [f32; 2], mass: f32) {
         let mut parent: &mut Self = self;
 
         if parent.mass == 0.0 {
             parent.mass = mass;
             parent.position = [position[0] * mass, position[1] * mass];
-            parent.boundary = boundary.clone();
             return;
         }
 
         // Search the lowest parent
         while !parent.is_leaf() {
-            let (_, quadrent) = parent.boundary.get_section(&position);
-            if parent.children[quadrent as usize].is_none() {
+            let quadrant = parent.boundary.get_section(&position);
+            if parent.children[quadrant as usize].is_none() {
                 break;
             }
             parent.update_mass(&position, &mass);
-            parent = parent.children[quadrent as usize].as_mut().unwrap();
+            parent = parent.children[quadrant as usize].as_mut().unwrap();
         }
 
-        let (mut new_bb, mut quadrent) = parent.boundary.get_section(&position);
+        let mut quadrant = parent.boundary.get_section(&position);
+        let mut new_bb = parent.boundary.get_sub_quadrant(quadrant);
         if parent.is_leaf() {
             let leaf_position = parent.position;
             let leaf_mass = parent.mass;
@@ -59,9 +59,10 @@ impl QuadTree {
             //Update the mass of the parent
             parent.update_mass(&position, &mass);
 
-            let (mut new_bb_leaf, mut quadrent_leaf) = parent.boundary.get_section(&l_pos);
+            let mut leaf_quadrant = parent.boundary.get_section(&l_pos);
+            let mut leaf_new_bb = parent.boundary.get_sub_quadrant(leaf_quadrant);
 
-            while quadrent == quadrent_leaf {
+            while quadrant == leaf_quadrant {
                 // If child is too close, treat it as one
                 if (leaf_position[0] - position[0]).abs() < EPSILON
                     && (leaf_position[1] - position[1]).abs() < EPSILON
@@ -69,18 +70,21 @@ impl QuadTree {
                     return;
                 }
 
-                parent.children[quadrent_leaf as usize] =
-                    Some(QuadTree::new_leaf(leaf_position, leaf_mass, new_bb_leaf));
-                parent = parent.children[quadrent_leaf as usize].as_mut().unwrap();
+                parent.children[leaf_quadrant as usize] =
+                    Some(QuadTree::new_leaf(leaf_position, leaf_mass, leaf_new_bb));
+                parent = parent.children[leaf_quadrant as usize].as_mut().unwrap();
 
-                (new_bb, quadrent) = parent.boundary.get_section(&position);
-                (new_bb_leaf, quadrent_leaf) = parent.boundary.get_section(&l_pos);
+                quadrant = parent.boundary.get_section(&position);
+                new_bb = parent.boundary.get_sub_quadrant(quadrant);
+
+                leaf_quadrant = parent.boundary.get_section(&l_pos);
+                leaf_new_bb = parent.boundary.get_sub_quadrant(leaf_quadrant);
             }
 
-            parent.children[quadrent_leaf as usize] =
-                Some(Self::new_leaf(leaf_position, leaf_mass, new_bb_leaf));
+            parent.children[leaf_quadrant as usize] =
+                Some(Self::new_leaf(leaf_position, leaf_mass, leaf_new_bb));
         }
-        parent.children[quadrent as usize] = Some(Self::new_leaf(
+        parent.children[quadrant as usize] = Some(Self::new_leaf(
             [position[0] * mass, position[1] * mass],
             mass,
             new_bb,
@@ -135,13 +139,13 @@ impl QuadTree {
 }
 
 #[derive(Clone, Debug)]
-pub struct Rectangle {
+pub struct BoundingBox2D {
     pub center: [f32; 2],
     pub width: f32,
     pub height: f32,
 }
 
-impl Rectangle {
+impl BoundingBox2D {
     pub fn new(center: [f32; 2], width: f32, height: f32) -> Self {
         Self {
             center,
@@ -149,47 +153,38 @@ impl Rectangle {
             height,
         }
     }
-    fn get_section(&self, loc: &[f32; 2]) -> (Rectangle, RectangleSection) {
-        let sect;
-        let mut newx = self.center[0];
-        let mut newy = self.center[1];
-        if loc[1] < self.center[1] {
-            if loc[0] < self.center[0] {
-                sect = RectangleSection::TL;
-            } else {
-                sect = RectangleSection::TR;
-            }
-            newy -= 0.25 * self.height;
-        } else {
-            if loc[0] < self.center[0] {
-                sect = RectangleSection::BL;
-            } else {
-                sect = RectangleSection::BR;
-            }
-            newy += 0.25 * self.height;
+    fn get_section(&self, loc: &[f32; 2]) -> u8 {
+        let mut section = 0x00;
+
+        if loc[1] > self.center[1] {
+            section |= 0b10;
         }
 
-        if loc[0] < self.center[0] {
-            newx -= 0.25 * self.width;
-        } else {
-            newx += 0.25 * self.width;
+        if loc[0] > self.center[0] {
+            section |= 0b01;
         }
 
-        (
-            Rectangle {
-                center: [newx, newy],
-                width: self.width * 0.5,
-                height: self.height * 0.5,
-            },
-            sect,
-        )
+        section
     }
-}
 
-#[derive(Debug, Clone, Copy, PartialEq)]
-enum RectangleSection {
-    TL = 0,
-    TR = 1,
-    BL = 2,
-    BR = 3,
+    pub fn get_sub_quadrant(&self, section: u8) -> Self {
+        let mut shifted_x = self.center[0];
+        let mut shifted_y = self.center[1];
+        if section & 0b01 > 0 {
+            shifted_x += 0.25 * self.width;
+        } else {
+            shifted_x -= 0.25 * self.width;
+        }
+
+        if section & 0b10 > 0 {
+            shifted_y += 0.25 * self.height;
+        } else {
+            shifted_y -= 0.25 * self.height;
+        }
+        Self {
+            center: [shifted_x, shifted_y],
+            width: self.width * 0.5,
+            height: self.height * 0.5,
+        }
+    }
 }

@@ -1,3 +1,6 @@
 /target
 *.html
-.vscode/
+
+.vscode/*
+!.vscode/tasks.json
+!.vscode/launch.json

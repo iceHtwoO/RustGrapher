@@ -5,17 +5,16 @@ use std::{
     marker::PhantomData,
     sync::{Arc, Mutex, RwLock},
     thread,
-    time::{Duration, Instant},
+    time::Instant,
 };
 
 use crate::{
     graph::Graph,
-    quadtree::{self, QuadTree, Rectangle},
+    quadtree::{BoundingBox2D, QuadTree},
     simgraph::SimGraph,
 };
 use glium::{glutin::surface::WindowSurface, implement_vertex, Display, Frame, Surface};
 
-use plotly::{layout::Axis, Layout, Plot, Scatter};
 use rand::{rngs::StdRng, Rng, SeedableRng};
 use winit::{
     event::{Event, WindowEvent},
@@ -239,14 +238,7 @@ where
             &camera,
         );
         if enable_quadtree {
-            self.draw_quadtree(
-                Arc::clone(&graph),
-                &mut target,
-                display,
-                &scale,
-                &max_m,
-                &camera,
-            );
+            self.draw_quadtree(Arc::clone(&graph), &mut target, display, &scale, &camera);
         }
 
         target.finish().unwrap();
@@ -369,7 +361,6 @@ where
         target: &mut Frame,
         display: &Display<WindowSurface>,
         scale: &f32,
-        max_m: &f32,
         camera: &[f32; 2],
     ) {
         let program =
@@ -394,12 +385,12 @@ where
 
         let w = max_x - min_x;
         let h = max_y - min_y;
-        let boundary = Rectangle::new([min_x + 0.5 * w, min_y + 0.5 * h], w, h);
+        let boundary = BoundingBox2D::new([min_x + 0.5 * w, min_y + 0.5 * h], w, h);
 
         let mut quadtree = QuadTree::new(boundary.clone());
 
         for node in graph_read_guard.get_node_iter() {
-            quadtree.insert(node.position, node.mass, &boundary);
+            quadtree.insert(node.position, node.mass);
         }
         Self::get_qt_vertex(&quadtree, &mut shape, camera, scale);
 
@@ -439,57 +430,5 @@ where
             boundary.width * scale * 0.5,
             boundary.height * scale * 0.5,
         ));
-    }
-
-    pub fn plot_data(&self) {
-        let mut x_axis = Vec::with_capacity(self.energy.len());
-        let mut k_energy = Vec::with_capacity(self.energy.len());
-        let mut s_energy = Vec::with_capacity(self.energy.len());
-        let mut r_energy = Vec::with_capacity(self.energy.len());
-        let mut pot_energy = Vec::with_capacity(self.energy.len());
-        let mut sys_energy = Vec::with_capacity(self.energy.len());
-        for (i, e) in self.energy.iter().enumerate() {
-            x_axis.push(i);
-            k_energy.push(e.kinetic);
-            s_energy.push(e.spring);
-            r_energy.push(e.repulsion_energy);
-            pot_energy.push(e.pot_energy);
-            sys_energy.push(e.repulsion_energy + e.kinetic + e.spring + e.pot_energy);
-        }
-
-        let mut plot = Plot::new();
-        plot.set_layout(
-            Layout::new()
-                .x_axis(Axis::new().title("Frame"))
-                .y_axis(Axis::new().title("J")),
-        );
-
-        let k_trace = Scatter::new(x_axis.clone(), k_energy)
-            .connect_gaps(true)
-            .name("Kinetic energy");
-
-        let s_trace = Scatter::new(x_axis.clone(), s_energy)
-            .connect_gaps(true)
-            .name("Spring energy");
-
-        let e_trace = Scatter::new(x_axis.clone(), r_energy)
-            .connect_gaps(true)
-            .name("Repulsion energy");
-
-        let pot_trace = Scatter::new(x_axis.clone(), pot_energy)
-            .connect_gaps(true)
-            .name("Pot energy");
-
-        let sys_trace = Scatter::new(x_axis, sys_energy)
-            .connect_gaps(true)
-            .name("System energy");
-
-        plot.add_trace(k_trace);
-        plot.add_trace(s_trace);
-        plot.add_trace(e_trace);
-        plot.add_trace(pot_trace);
-        plot.add_trace(sys_trace);
-
-        plot.write_html("out.html");
     }
 }

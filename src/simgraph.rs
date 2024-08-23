@@ -9,7 +9,7 @@ use rand::Rng;
 
 use crate::{
     graph::{Graph, Node},
-    quadtree::{self, QuadTree, Rectangle},
+    quadtree::{BoundingBox2D, QuadTree},
 };
 
 #[derive(Clone, Debug)]
@@ -190,11 +190,11 @@ where
 
         let w = max_x - min_x;
         let h = max_y - min_y;
-        let boundary = Rectangle::new([min_x + 0.5 * w, min_y + 0.5 * h], w, h);
+        let boundary = BoundingBox2D::new([min_x + 0.5 * w, min_y + 0.5 * h], w, h);
         let mut quadtree = QuadTree::new(boundary.clone());
 
-        for (i, n) in graph_read_guard.get_node_iter().enumerate() {
-            quadtree.insert(n.position.clone(), n.mass, &boundary);
+        for n in graph_read_guard.get_node_iter() {
+            quadtree.insert(n.position.clone(), n.mass);
         }
         quadtree
     }
