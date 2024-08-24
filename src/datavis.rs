@@ -12,9 +12,13 @@ use crate::{
     graph::{Graph, Node},
     quadtree::{BoundingBox2D, QuadTree},
     simgraph::SimGraph,
-    vectors::Vector2D,
+    vectors::{Vector2D, Vector3D},
 };
-use glium::{glutin::surface::WindowSurface, implement_vertex, Display, Frame, Surface};
+use camera::Camera;
+use glium::{
+    glutin::surface::WindowSurface, implement_vertex, uniform, uniforms::UniformsStorage, Display,
+    Frame, Surface,
+};
 
 use rand::{rngs::StdRng, Rng, SeedableRng};
 use winit::{
@@ -23,6 +27,7 @@ use winit::{
     window::Window,
 };
 
+mod camera;
 mod shapes;
 
 static VERTEX_SHADER_SRC: &str = r#"
@@ -32,9 +37,11 @@ in vec2 position;
 in vec4 color;
 out vec4 vertex_color;
 
+uniform mat4 matrix;
+
 void main() {
     vertex_color = color;
-    gl_Position =  vec4(position, 0.0, 1.0);
+    gl_Position =  matrix * vec4(position, 0.0, 1.0);
 }
 "#;
 
@@ -93,7 +100,7 @@ where
         let mut last_redraw = Instant::now();
         let mut last_pause = Instant::now();
         let mut scroll_scale: f32 = 1.0;
-        let mut camera = Vector2D::new([0.0, 0.0]);
+        let mut camera = Camera::new(Vector3D::new([0.0, 0.0, 0.0]));
         let mut cursor = winit::dpi::PhysicalPosition::new(0.0, 0.0);
 
         let toggle_sim = Arc::new(RwLock::new(false));
@@ -146,7 +153,11 @@ where
                             }
                         }
                         Some(winit::event::VirtualKeyCode::Return) => {
-                            camera.set(graph.read().unwrap().avg_pos());
+                            camera.position.set(
+                                Vector2D::new(graph.read().unwrap().avg_pos())
+                                    .to_3d()
+                                    .get_position(),
+                            );
                         }
                         Some(winit::event::VirtualKeyCode::Q) => {
                             if last_pause.elapsed().as_millis() >= 400 {
@@ -169,14 +180,14 @@ where
 
                 let camera_factor = 0.05 * scroll_scale * 20.0;
                 if cursor.x < window.inner_size().width as f64 * 0.1 {
-                    camera[0] -= camera_factor;
+                    camera.position[0] -= camera_factor;
                 } else if cursor.x > window.inner_size().width as f64 * 0.9 {
-                    camera[0] += camera_factor;
+                    camera.position[0] += camera_factor;
                 }
                 if cursor.y < window.inner_size().height as f64 * 0.1 {
-                    camera[1] += camera_factor;
+                    camera.position[1] += camera_factor;
                 } else if cursor.y > window.inner_size().height as f64 * 0.9 {
-                    camera[1] -= camera_factor;
+                    camera.position[1] -= camera_factor;
                 }
 
                 self_mutex.draw_graph(
@@ -195,7 +206,7 @@ where
         display: &Display<WindowSurface>,
         graph: Arc<RwLock<Graph<T>>>,
         scale: &f32,
-        camera: &Vector2D,
+        camera: &Camera,
         enable_quadtree: bool,
     ) {
         let mut target = display.draw();
@@ -214,24 +225,34 @@ where
             max_m = n.mass.max(max_m);
         }
         drop(graph_read_guard);
+
+        let uniforms = uniform! {
+            matrix: [
+                [1.0/scale, 0.0, 0.0, 0.0],
+                [0.0, 1.0/scale, 0.0, 0.0],
+                [0.0, 0.0, 1.0, 0.0],
+                [ 0.0 , 0.0, 0.0, 1.0f32],
+            ]
+        };
+
         self.draw_edge(
             Arc::clone(&graph),
             &mut target,
             display,
-            &scale,
             &max_m,
             &camera,
+            &uniforms,
         );
         self.draw_node(
             Arc::clone(&graph),
             &mut target,
             display,
-            &scale,
             &max_m,
             &camera,
+            &uniforms,
         );
         if enable_quadtree {
-            self.draw_quadtree(Arc::clone(&graph), &mut target, display, &scale, &camera);
+            self.draw_quadtree(Arc::clone(&graph), &mut target, display, &camera, &uniforms);
         }
 
         target.finish().unwrap();
@@ -242,9 +263,9 @@ where
         graph: Arc<RwLock<Graph<T>>>,
         target: &mut Frame,
         display: &Display<WindowSurface>,
-        scale: &f32,
         max_m: &f32,
-        camera: &Vector2D,
+        camera: &Camera,
+        uniform: &UniformsStorage<[[f32; 4]; 4], glium::uniforms::EmptyUniforms>,
     ) {
         let program =
             glium::Program::from_source(display, VERTEX_SHADER_SRC, FRAGMENT_SHADER_SRC, None)
@@ -252,24 +273,18 @@ where
 
         let mut shape: Vec<Vertex> = vec![];
 
-        shape.append(&mut shapes::line(
-            [-1.0, -0.9],
-            [(1.0 * scale) - 1.0, -0.9],
-            [0.0, 1.0, 0.0, 1.0],
-        ));
-
         let graph_read_guard = graph.read().unwrap();
 
         for edge in graph_read_guard.get_edge_iter() {
             let n1 = graph_read_guard.get_node_by_index(edge.0);
             let n2 = graph_read_guard.get_node_by_index(edge.1);
             let p1 = [
-                (n1.position[0] - camera[0]) * scale,
-                (n1.position[1] - camera[1]) * scale,
+                n1.position[0] - camera.position[0],
+                n1.position[1] - camera.position[1],
             ];
             let p2 = [
-                (n2.position[0] - camera[0]) * scale,
-                (n2.position[1] - camera[1]) * scale,
+                n2.position[0] - camera.position[0],
+                n2.position[1] - camera.position[1],
             ];
 
             let min_m = n1.mass.min(n2.mass);
@@ -291,7 +306,7 @@ where
                 &vertex_buffer,
                 indices,
                 &program,
-                &glium::uniforms::EmptyUniforms,
+                uniform,
                 &Default::default(),
             )
             .unwrap();
@@ -302,9 +317,9 @@ where
         graph: Arc<RwLock<Graph<T>>>,
         target: &mut Frame,
         display: &Display<WindowSurface>,
-        scale: &f32,
         max_m: &f32,
-        camera: &Vector2D,
+        camera: &Camera,
+        uniform: &UniformsStorage<[[f32; 4]; 4], glium::uniforms::EmptyUniforms>,
     ) {
         let program =
             glium::Program::from_source(display, VERTEX_SHADER_SRC, FRAGMENT_SHADER_SRC, None)
@@ -315,13 +330,10 @@ where
 
         for (e, node) in graph_read_guard.get_node_iter().enumerate() {
             let mut pos = node.position;
-            let r = (f32::sqrt(node.mass * PI) * scale) * 0.1;
+            let r = f32::sqrt(node.mass * PI) * 0.1;
 
-            pos[0] -= camera[0];
-            pos[1] -= camera[1];
-
-            pos[0] *= scale;
-            pos[1] *= scale;
+            pos[0] -= camera.position[0];
+            pos[1] -= camera.position[1];
 
             let mut rand = StdRng::seed_from_u64(e as u64);
             let color = [
@@ -342,7 +354,7 @@ where
                 &vertex_buffer,
                 indices,
                 &program,
-                &glium::uniforms::EmptyUniforms,
+                uniform,
                 &Default::default(),
             )
             .unwrap();
@@ -353,8 +365,8 @@ where
         graph: Arc<RwLock<Graph<T>>>,
         target: &mut Frame,
         display: &Display<WindowSurface>,
-        scale: &f32,
-        camera: &Vector2D,
+        camera: &Camera,
+        uniform: &UniformsStorage<[[f32; 4]; 4], glium::uniforms::EmptyUniforms>,
     ) {
         let program =
             glium::Program::from_source(display, VERTEX_SHADER_SRC, FRAGMENT_SHADER_SRC, None)
@@ -386,7 +398,7 @@ where
             quadtree.insert(Some(node), node.position, node.mass);
         }
 
-        Self::get_qt_vertex(&quadtree, &mut shape, &camera, scale);
+        Self::get_qt_vertex(&quadtree, &mut shape, &camera);
 
         let vertex_buffer = glium::VertexBuffer::new(display, &shape).unwrap();
         let indices = glium::index::NoIndices(glium::index::PrimitiveType::LinesList);
@@ -396,21 +408,16 @@ where
                 &vertex_buffer,
                 indices,
                 &program,
-                &glium::uniforms::EmptyUniforms,
+                uniform,
                 &Default::default(),
             )
             .unwrap();
     }
 
-    fn get_qt_vertex(
-        quadtree: &QuadTree<Node<T>>,
-        shape: &mut Vec<Vertex>,
-        camera: &Vector2D,
-        scale: &f32,
-    ) {
+    fn get_qt_vertex(quadtree: &QuadTree<Node<T>>, shape: &mut Vec<Vertex>, camera: &Camera) {
         for child in quadtree.children.iter() {
             match child {
-                Some(c) => Self::get_qt_vertex(&c, shape, camera, scale),
+                Some(c) => Self::get_qt_vertex(&c, shape, camera),
                 None => (),
             }
         }
@@ -418,16 +425,14 @@ where
 
         let mut pos = boundary.center;
 
-        pos[0] -= camera[0];
-        pos[1] -= camera[1];
+        pos[0] -= camera.position[0];
+        pos[1] -= camera.position[1];
 
-        pos[0] *= scale;
-        pos[1] *= scale;
         shape.append(&mut shapes::rectangle_lines(
             pos,
             [0.0, 0.0, 1.0, 1.0],
-            boundary.width * scale * 0.5,
-            boundary.height * scale * 0.5,
+            boundary.width * 0.5,
+            boundary.height * 0.5,
         ));
     }
 }

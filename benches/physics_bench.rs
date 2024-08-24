@@ -82,7 +82,7 @@ fn simulation_gravity(c: &mut Criterion) {
 fn quadtree_insert(c: &mut Criterion) {
     let w = 1000.0;
     let bb = BoundingBox2D::new([0.0, 0.0], w, w);
-    let mut qt = QuadTree::new(bb.clone());
+    let mut qt: QuadTree<u32> = QuadTree::new(bb.clone());
     let mut rng = rand::thread_rng();
     c.bench_function("Quadtree insert", |b| {
         b.iter(|| {
@@ -104,7 +104,7 @@ fn quadtree_get_stack(c: &mut Criterion) {
     let mut rng = rand::thread_rng();
     let mut group = c.benchmark_group("QuadTree get");
     for i in NODE {
-        let mut qt = QuadTree::new(bb.clone());
+        let mut qt: QuadTree<u32> = QuadTree::new(bb.clone());
         for n in 0..i {
             qt.insert(
                 None,

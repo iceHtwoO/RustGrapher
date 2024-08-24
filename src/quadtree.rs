@@ -34,7 +34,7 @@ impl<'a, T> QuadTree<'a, T> {
         }
     }
 
-    pub fn get_position(&self) -> [f32; 2] {
+    pub fn get_position_ref(&self) -> [f32; 2] {
         [self.position[0] / self.mass, self.position[1] / self.mass]
     }
 

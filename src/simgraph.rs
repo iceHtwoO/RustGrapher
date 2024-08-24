@@ -141,7 +141,7 @@ where
                     for node_approximation in node_approximations {
                         let node_approximation_particle = Node {
                             data: n1.data.clone(),
-                            position: node_approximation.get_position(),
+                            position: node_approximation.get_position_ref(),
                             velocity: [0.0, 0.0],
                             mass: node_approximation.mass,
                             fixed: false,

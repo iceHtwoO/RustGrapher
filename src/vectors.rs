@@ -28,8 +28,12 @@ where
         self.position = position;
     }
 
-    pub fn get_position(&self) -> &[T; N] {
+    pub fn get_position_ref(&self) -> &[T; N] {
         &self.position
+    }
+
+    pub fn get_position(&self) -> [T; N] {
+        self.position
     }
 
     pub fn distance(&self, other: &Self) -> f64 {
@@ -145,5 +149,11 @@ where
         for i in 0..N {
             self.position[i] *= rhs.position[i];
         }
+    }
+}
+
+impl Vector2D {
+    pub fn to_3d(self) -> Vector3D {
+        Vector3D::new([self.position[0], self.position[1], 0.0])
     }
 }
