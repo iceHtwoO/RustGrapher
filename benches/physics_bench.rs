@@ -87,6 +87,7 @@ fn quadtree_insert(c: &mut Criterion) {
     c.bench_function("Quadtree insert", |b| {
         b.iter(|| {
             qt.insert(
+                None,
                 black_box([
                     rng.gen_range((-w / 2.0)..(w / 2.0)),
                     rng.gen_range((-w / 2.0)..(w / 2.0)),
@@ -106,6 +107,7 @@ fn quadtree_get_stack(c: &mut Criterion) {
         let mut qt = QuadTree::new(bb.clone());
         for n in 0..i {
             qt.insert(
+                None,
                 black_box([
                     rng.gen_range((-w / 2.0)..(w / 2.0)),
                     rng.gen_range((-w / 2.0)..(w / 2.0)),

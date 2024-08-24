@@ -24,6 +24,9 @@ where
     pub fn new(position: [T; N]) -> Self {
         Self { position }
     }
+    pub fn set(&mut self, position: [T; N]) {
+        self.position = position;
+    }
 
     pub fn get_position(&self) -> &[T; N] {
         &self.position

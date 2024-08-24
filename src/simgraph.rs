@@ -173,7 +173,7 @@ where
         handle
     }
 
-    fn build_quadtree(graph: Arc<RwLock<Graph<T>>>) -> QuadTree {
+    fn build_quadtree(graph: Arc<RwLock<Graph<T>>>) -> QuadTree<'static, u32> {
         let graph_read_guard = graph.read().unwrap();
 
         let mut max_x = -INFINITY;
@@ -194,7 +194,7 @@ where
         let mut quadtree = QuadTree::new(boundary.clone());
 
         for n in graph_read_guard.get_node_iter() {
-            quadtree.insert(n.position.clone(), n.mass);
+            quadtree.insert(None, n.position.clone(), n.mass);
         }
         quadtree
     }
@@ -286,7 +286,6 @@ where
     fn repel_force(repel_force_const: f32, n1: &Node<T>, n2: &Node<T>) -> Vector2D {
         let vec = Self::compute_direction_vector(n1, n2);
         let mut dir_vec = Vector2D::new(vec);
-        let dist = Self::compute_distance(n1, n2);
         let mut force = Vector2D::new([0.0, 0.0]);
 
         let x_y_len = vec[0].abs() + vec[1].abs();

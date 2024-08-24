@@ -9,9 +9,10 @@ use std::{
 };
 
 use crate::{
-    graph::Graph,
+    graph::{Graph, Node},
     quadtree::{BoundingBox2D, QuadTree},
     simgraph::SimGraph,
+    vectors::Vector2D,
 };
 use glium::{glutin::surface::WindowSurface, implement_vertex, Display, Frame, Surface};
 
@@ -52,14 +53,6 @@ struct Vertex {
     position: [f32; 2],
     color: [f32; 4],
 }
-
-struct Energy {
-    kinetic: f32,
-    spring: f32,
-    repulsion_energy: f32,
-    pot_energy: f32,
-}
-
 implement_vertex!(Vertex, position, color);
 
 pub struct DataVis<T>
@@ -68,7 +61,6 @@ where
 {
     sim: SimGraph<T>,
     phantom: PhantomData<T>,
-    energy: Vec<Energy>,
 }
 
 impl<T> DataVis<T>
@@ -79,7 +71,6 @@ where
         Self {
             sim: SimGraph::new(),
             phantom: PhantomData,
-            energy: vec![],
         }
     }
 
@@ -102,7 +93,7 @@ where
         let mut last_redraw = Instant::now();
         let mut last_pause = Instant::now();
         let mut scroll_scale: f32 = 1.0;
-        let mut camera = [0.0, 0.0];
+        let mut camera = Vector2D::new([0.0, 0.0]);
         let mut cursor = winit::dpi::PhysicalPosition::new(0.0, 0.0);
 
         let toggle_sim = Arc::new(RwLock::new(false));
@@ -126,6 +117,8 @@ where
 
         event_loop.run(move |event, _, control_flow| {
             *control_flow = ControlFlow::Poll;
+            let scale = 2.0 / (scroll_scale * 20.0);
+
             match event {
                 Event::WindowEvent { event, .. } => match event {
                     WindowEvent::CloseRequested | WindowEvent::Destroyed => {
@@ -153,7 +146,7 @@ where
                             }
                         }
                         Some(winit::event::VirtualKeyCode::Return) => {
-                            camera = graph.read().unwrap().avg_pos();
+                            camera.set(graph.read().unwrap().avg_pos());
                         }
                         Some(winit::event::VirtualKeyCode::Q) => {
                             if last_pause.elapsed().as_millis() >= 400 {
@@ -172,7 +165,6 @@ where
             let mut self_mutex = self_arc_clone.lock().unwrap();
 
             if last_redraw.elapsed().as_millis() >= 34 {
-                let scale = 2.0 / (scroll_scale * 20.0);
                 last_redraw = Instant::now();
 
                 let camera_factor = 0.05 * scroll_scale * 20.0;
@@ -186,6 +178,7 @@ where
                 } else if cursor.y > window.inner_size().height as f64 * 0.9 {
                     camera[1] -= camera_factor;
                 }
+
                 self_mutex.draw_graph(
                     &display_arc,
                     Arc::clone(&graph),
@@ -202,7 +195,7 @@ where
         display: &Display<WindowSurface>,
         graph: Arc<RwLock<Graph<T>>>,
         scale: &f32,
-        camera: &[f32; 2],
+        camera: &Vector2D,
         enable_quadtree: bool,
     ) {
         let mut target = display.draw();
@@ -251,7 +244,7 @@ where
         display: &Display<WindowSurface>,
         scale: &f32,
         max_m: &f32,
-        camera: &[f32; 2],
+        camera: &Vector2D,
     ) {
         let program =
             glium::Program::from_source(display, VERTEX_SHADER_SRC, FRAGMENT_SHADER_SRC, None)
@@ -311,7 +304,7 @@ where
         display: &Display<WindowSurface>,
         scale: &f32,
         max_m: &f32,
-        avg: &[f32; 2],
+        camera: &Vector2D,
     ) {
         let program =
             glium::Program::from_source(display, VERTEX_SHADER_SRC, FRAGMENT_SHADER_SRC, None)
@@ -324,8 +317,8 @@ where
             let mut pos = node.position;
             let r = (f32::sqrt(node.mass * PI) * scale) * 0.1;
 
-            pos[0] -= avg[0];
-            pos[1] -= avg[1];
+            pos[0] -= camera[0];
+            pos[1] -= camera[1];
 
             pos[0] *= scale;
             pos[1] *= scale;
@@ -361,7 +354,7 @@ where
         target: &mut Frame,
         display: &Display<WindowSurface>,
         scale: &f32,
-        camera: &[f32; 2],
+        camera: &Vector2D,
     ) {
         let program =
             glium::Program::from_source(display, VERTEX_SHADER_SRC, FRAGMENT_SHADER_SRC, None)
@@ -390,9 +383,10 @@ where
         let mut quadtree = QuadTree::new(boundary.clone());
 
         for node in graph_read_guard.get_node_iter() {
-            quadtree.insert(node.position, node.mass);
+            quadtree.insert(Some(node), node.position, node.mass);
         }
-        Self::get_qt_vertex(&quadtree, &mut shape, camera, scale);
+
+        Self::get_qt_vertex(&quadtree, &mut shape, &camera, scale);
 
         let vertex_buffer = glium::VertexBuffer::new(display, &shape).unwrap();
         let indices = glium::index::NoIndices(glium::index::PrimitiveType::LinesList);
@@ -408,7 +402,12 @@ where
             .unwrap();
     }
 
-    fn get_qt_vertex(quadtree: &QuadTree, shape: &mut Vec<Vertex>, camera: &[f32; 2], scale: &f32) {
+    fn get_qt_vertex(
+        quadtree: &QuadTree<Node<T>>,
+        shape: &mut Vec<Vertex>,
+        camera: &Vector2D,
+        scale: &f32,
+    ) {
         for child in quadtree.children.iter() {
             match child {
                 Some(c) => Self::get_qt_vertex(&c, shape, camera, scale),
