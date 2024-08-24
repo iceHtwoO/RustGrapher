@@ -16,8 +16,10 @@ use crate::{
 };
 use camera::Camera;
 use glium::{
-    glutin::surface::WindowSurface, implement_vertex, uniform, uniforms::UniformsStorage, Display,
-    Frame, Surface,
+    glutin::surface::WindowSurface,
+    implement_vertex, uniform,
+    uniforms::{AsUniformValue, Uniforms, UniformsStorage},
+    Display, DrawParameters, Frame, Surface,
 };
 
 use rand::{rngs::StdRng, Rng, SeedableRng};
@@ -28,36 +30,12 @@ use winit::{
 };
 
 mod camera;
+mod draw;
 mod shapes;
 
-static VERTEX_SHADER_SRC: &str = r#"
-#version 140
-
-in vec2 position;
-in vec4 color;
-out vec4 vertex_color;
-
-uniform mat4 matrix;
-
-void main() {
-    vertex_color = color;
-    gl_Position =  matrix * vec4(position, 0.0, 1.0);
-}
-"#;
-
-static FRAGMENT_SHADER_SRC: &str = r#"
-#version 140
-
-in vec4 vertex_color;
-out vec4 color;
-
-void main() {
-    color = vec4(vertex_color);
-}
-"#;
 #[derive(Copy, Clone, Debug)]
 struct Vertex {
-    position: [f32; 2],
+    position: [f32; 3],
     color: [f32; 4],
 }
 implement_vertex!(Vertex, position, color);
@@ -99,7 +77,7 @@ where
     ) {
         let mut last_redraw = Instant::now();
         let mut last_pause = Instant::now();
-        let mut scroll_scale: f32 = 1.0;
+        let scroll_scale: f32 = 1.0;
         let mut camera = Camera::new(Vector3D::new([0.0, 0.0, 0.0]));
         let mut cursor = winit::dpi::PhysicalPosition::new(0.0, 0.0);
 
@@ -124,7 +102,6 @@ where
 
         event_loop.run(move |event, _, control_flow| {
             *control_flow = ControlFlow::Poll;
-            let scale = 2.0 / (scroll_scale * 20.0);
 
             match event {
                 Event::WindowEvent { event, .. } => match event {
@@ -134,9 +111,9 @@ where
                     WindowEvent::MouseWheel { delta, .. } => match delta {
                         winit::event::MouseScrollDelta::LineDelta(_, y) => {
                             if y < 0.0 {
-                                scroll_scale *= 0.75;
+                                camera.position[2] -= 0.25;
                             } else if y > 0.0 {
-                                scroll_scale *= 1.25;
+                                camera.position[2] += 0.25;
                             }
                         }
                         _ => (),
@@ -178,8 +155,8 @@ where
             if last_redraw.elapsed().as_millis() >= 34 {
                 last_redraw = Instant::now();
 
-                let camera_factor = 0.05 * scroll_scale * 20.0;
-                if cursor.x < window.inner_size().width as f64 * 0.1 {
+                let camera_factor: f32 = 1.0;
+                /*if cursor.x < window.inner_size().width as f64 * 0.1 {
                     camera.position[0] -= camera_factor;
                 } else if cursor.x > window.inner_size().width as f64 * 0.9 {
                     camera.position[0] += camera_factor;
@@ -188,15 +165,10 @@ where
                     camera.position[1] += camera_factor;
                 } else if cursor.y > window.inner_size().height as f64 * 0.9 {
                     camera.position[1] -= camera_factor;
-                }
+                }*/
+                camera.look_at(&Vector3D::new([0.0, 0.0, -1.0]));
 
-                self_mutex.draw_graph(
-                    &display_arc,
-                    Arc::clone(&graph),
-                    &scale,
-                    &camera,
-                    toggle_quadtree,
-                );
+                self_mutex.draw_graph(&display_arc, Arc::clone(&graph), &camera, toggle_quadtree);
             }
         });
     }
@@ -205,12 +177,11 @@ where
         &mut self,
         display: &Display<WindowSurface>,
         graph: Arc<RwLock<Graph<T>>>,
-        scale: &f32,
         camera: &Camera,
         enable_quadtree: bool,
     ) {
         let mut target = display.draw();
-        target.clear_color(0.0, 0.0, 0.0, 1.0);
+        target.clear_color_and_depth((0.0, 0.0, 0.0, 1.0), 1.0);
 
         let mut max: f32 = -INFINITY;
         let mut min: f32 = INFINITY;
@@ -226,213 +197,60 @@ where
         }
         drop(graph_read_guard);
 
-        let uniforms = uniform! {
-            matrix: [
-                [1.0/scale, 0.0, 0.0, 0.0],
-                [0.0, 1.0/scale, 0.0, 0.0],
-                [0.0, 0.0, 1.0, 0.0],
-                [ 0.0 , 0.0, 0.0, 1.0f32],
+        let cpos = camera.position;
+
+        let perspective = {
+            let (width, height) = target.get_dimensions();
+            let aspect_ratio = height as f32 / width as f32;
+
+            let fov: f32 = 3.141592 / 3.0;
+            let zfar = 1024.0;
+            let znear = 0.1;
+
+            let f = 1.0 / (fov / 2.0).tan();
+
+            [
+                [f * aspect_ratio, 0.0, 0.0, 0.0],
+                [0.0, f, 0.0, 0.0],
+                [0.0, 0.0, (zfar + znear) / (zfar - znear), 1.0],
+                [0.0, 0.0, -(2.0 * zfar * znear) / (zfar - znear), 0.0],
             ]
         };
 
-        self.draw_edge(
+        let uniforms = uniform! {
+            matrix: camera.matrix(),
+            perspective: perspective
+        };
+
+        let params = glium::DrawParameters {
+            depth: glium::Depth {
+                test: glium::draw_parameters::DepthTest::IfLess,
+                write: true,
+                ..Default::default()
+            },
+            ..Default::default()
+        };
+
+        draw::draw_edge(
             Arc::clone(&graph),
             &mut target,
             display,
             &max_m,
-            &camera,
             &uniforms,
+            &params,
         );
-        self.draw_node(
+        draw::draw_node(
             Arc::clone(&graph),
             &mut target,
             display,
             &max_m,
-            &camera,
             &uniforms,
+            &params,
         );
         if enable_quadtree {
-            self.draw_quadtree(Arc::clone(&graph), &mut target, display, &camera, &uniforms);
+            draw::draw_quadtree(Arc::clone(&graph), &mut target, display, &uniforms, &params);
         }
 
         target.finish().unwrap();
-    }
-
-    fn draw_edge(
-        &self,
-        graph: Arc<RwLock<Graph<T>>>,
-        target: &mut Frame,
-        display: &Display<WindowSurface>,
-        max_m: &f32,
-        camera: &Camera,
-        uniform: &UniformsStorage<[[f32; 4]; 4], glium::uniforms::EmptyUniforms>,
-    ) {
-        let program =
-            glium::Program::from_source(display, VERTEX_SHADER_SRC, FRAGMENT_SHADER_SRC, None)
-                .unwrap();
-
-        let mut shape: Vec<Vertex> = vec![];
-
-        let graph_read_guard = graph.read().unwrap();
-
-        for edge in graph_read_guard.get_edge_iter() {
-            let n1 = graph_read_guard.get_node_by_index(edge.0);
-            let n2 = graph_read_guard.get_node_by_index(edge.1);
-            let p1 = [
-                n1.position[0] - camera.position[0],
-                n1.position[1] - camera.position[1],
-            ];
-            let p2 = [
-                n2.position[0] - camera.position[0],
-                n2.position[1] - camera.position[1],
-            ];
-
-            let min_m = n1.mass.min(n2.mass);
-            let color = [
-                (min_m / max_m) as f32 * 10.0,
-                (min_m / max_m) as f32 * 6.0,
-                (min_m / max_m) as f32 * 6.0,
-                (min_m / max_m) as f32,
-            ];
-
-            shape.append(&mut shapes::line(p1, p2, color));
-        }
-
-        let vertex_buffer = glium::VertexBuffer::new(display, &shape).unwrap();
-        let indices = glium::index::NoIndices(glium::index::PrimitiveType::LinesList);
-
-        target
-            .draw(
-                &vertex_buffer,
-                indices,
-                &program,
-                uniform,
-                &Default::default(),
-            )
-            .unwrap();
-    }
-
-    fn draw_node(
-        &self,
-        graph: Arc<RwLock<Graph<T>>>,
-        target: &mut Frame,
-        display: &Display<WindowSurface>,
-        max_m: &f32,
-        camera: &Camera,
-        uniform: &UniformsStorage<[[f32; 4]; 4], glium::uniforms::EmptyUniforms>,
-    ) {
-        let program =
-            glium::Program::from_source(display, VERTEX_SHADER_SRC, FRAGMENT_SHADER_SRC, None)
-                .unwrap();
-
-        let mut shape: Vec<Vertex> = vec![];
-        let graph_read_guard = graph.read().unwrap();
-
-        for (e, node) in graph_read_guard.get_node_iter().enumerate() {
-            let mut pos = node.position;
-            let r = f32::sqrt(node.mass * PI) * 0.1;
-
-            pos[0] -= camera.position[0];
-            pos[1] -= camera.position[1];
-
-            let mut rand = StdRng::seed_from_u64(e as u64);
-            let color = [
-                (rand.gen_range(10..=100) as f32) / 100.0,
-                (rand.gen_range(10..=100) as f32) / 100.0,
-                (rand.gen_range(10..=100) as f32) / 100.0,
-                (node.mass / max_m) as f32,
-            ];
-
-            shape.append(&mut shapes::circle(pos, color, r, 30));
-        }
-
-        let vertex_buffer = glium::VertexBuffer::new(display, &shape).unwrap();
-        let indices = glium::index::NoIndices(glium::index::PrimitiveType::TrianglesList);
-
-        target
-            .draw(
-                &vertex_buffer,
-                indices,
-                &program,
-                uniform,
-                &Default::default(),
-            )
-            .unwrap();
-    }
-
-    fn draw_quadtree(
-        &self,
-        graph: Arc<RwLock<Graph<T>>>,
-        target: &mut Frame,
-        display: &Display<WindowSurface>,
-        camera: &Camera,
-        uniform: &UniformsStorage<[[f32; 4]; 4], glium::uniforms::EmptyUniforms>,
-    ) {
-        let program =
-            glium::Program::from_source(display, VERTEX_SHADER_SRC, FRAGMENT_SHADER_SRC, None)
-                .unwrap();
-
-        let mut shape: Vec<Vertex> = vec![];
-
-        let graph_read_guard = graph.read().unwrap();
-
-        let mut max_x = -INFINITY;
-        let mut min_x = INFINITY;
-        let mut max_y = -INFINITY;
-        let mut min_y = INFINITY;
-
-        for node in graph_read_guard.get_node_iter() {
-            max_x = max_x.max(node.position[0]);
-            max_y = max_y.max(node.position[1]);
-            min_x = min_x.min(node.position[0]);
-            min_y = min_y.min(node.position[1]);
-        }
-
-        let w = max_x - min_x;
-        let h = max_y - min_y;
-        let boundary = BoundingBox2D::new([min_x + 0.5 * w, min_y + 0.5 * h], w, h);
-
-        let mut quadtree = QuadTree::new(boundary.clone());
-
-        for node in graph_read_guard.get_node_iter() {
-            quadtree.insert(Some(node), node.position, node.mass);
-        }
-
-        Self::get_qt_vertex(&quadtree, &mut shape, &camera);
-
-        let vertex_buffer = glium::VertexBuffer::new(display, &shape).unwrap();
-        let indices = glium::index::NoIndices(glium::index::PrimitiveType::LinesList);
-
-        target
-            .draw(
-                &vertex_buffer,
-                indices,
-                &program,
-                uniform,
-                &Default::default(),
-            )
-            .unwrap();
-    }
-
-    fn get_qt_vertex(quadtree: &QuadTree<Node<T>>, shape: &mut Vec<Vertex>, camera: &Camera) {
-        for child in quadtree.children.iter() {
-            match child {
-                Some(c) => Self::get_qt_vertex(&c, shape, camera),
-                None => (),
-            }
-        }
-        let boundary = quadtree.boundary.clone();
-
-        let mut pos = boundary.center;
-
-        pos[0] -= camera.position[0];
-        pos[1] -= camera.position[1];
-
-        shape.append(&mut shapes::rectangle_lines(
-            pos,
-            [0.0, 0.0, 1.0, 1.0],
-            boundary.width * 0.5,
-            boundary.height * 0.5,
-        ));
     }
 }

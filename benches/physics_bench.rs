@@ -22,7 +22,7 @@ fn simulation_all_enabled(c: &mut Criterion) {
     let mut group = c.benchmark_group("Repel, Spring, Gravity");
 
     for i in NODE {
-        let mut g = Graph::new();
+        let mut g = Graph::new(0);
         setup(&mut g, i);
         let g_arc = Arc::new(RwLock::new(g));
         let mut sim = SimGraph::new();
@@ -37,7 +37,7 @@ fn simulation_repel(c: &mut Criterion) {
     let mut group = c.benchmark_group("Repel");
 
     for i in NODE {
-        let mut g = Graph::new();
+        let mut g = Graph::new(0);
         setup(&mut g, i);
 
         let g_arc = Arc::new(RwLock::new(g));
@@ -53,7 +53,7 @@ fn simulation_spring(c: &mut Criterion) {
     let mut group = c.benchmark_group("spring");
 
     for i in NODE {
-        let mut g = Graph::new();
+        let mut g = Graph::new(0);
         setup(&mut g, i);
         let g_arc = Arc::new(RwLock::new(g));
         let mut sim = SimGraph::new_config(false, true, false);
@@ -68,7 +68,7 @@ fn simulation_gravity(c: &mut Criterion) {
     let mut group = c.benchmark_group("gravity");
 
     for i in NODE {
-        let mut g = Graph::new();
+        let mut g = Graph::new(0);
         setup(&mut g, i);
         let g_arc = Arc::new(RwLock::new(g));
         let mut sim = SimGraph::new_config(false, false, true);

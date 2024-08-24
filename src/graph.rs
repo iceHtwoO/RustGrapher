@@ -3,7 +3,7 @@ use std::{
     vec,
 };
 
-use rand::Rng;
+use rand::{rngs::StdRng, Rng, SeedableRng};
 
 #[derive(Debug, Clone)]
 pub enum GraphType {
@@ -47,8 +47,21 @@ where
     T: PartialEq,
 {
     pub fn new(data: T) -> Self {
-        let x: f32 = rand::thread_rng().gen_range(-60.0..60.0);
-        let y: f32 = rand::thread_rng().gen_range(-60.0..60.0);
+        let mut rng = StdRng::seed_from_u64(0 as u64);
+        let x: f32 = rng.gen_range(-60.0..60.0);
+        let y: f32 = rng.gen_range(-60.0..60.0);
+        Self {
+            data,
+            position: [x, y],
+            velocity: [0.0, 0.0],
+            mass: 1.0,
+            fixed: false,
+        }
+    }
+    pub fn new_seeded(data: T, seed: u64) -> Self {
+        let mut rng = StdRng::seed_from_u64(seed);
+        let x: f32 = rng.gen_range(-60.0..60.0);
+        let y: f32 = rng.gen_range(-60.0..60.0);
         Self {
             data,
             position: [x, y],
@@ -70,22 +83,25 @@ where
     nodes: Vec<Node<T>>,
     edges: Vec<Edge>,
     graph_type: GraphType,
+    seed: u64,
 }
 
 impl<T> Graph<T>
 where
     T: PartialEq + Clone,
 {
-    pub fn new() -> Self {
+    pub fn new(seed: u64) -> Self {
         Self {
             nodes: vec![],
             edges: vec![],
             graph_type: GraphType::Undirected,
+            seed,
         }
     }
 
     pub fn add_node(&mut self, data: T) -> DefaultIndex {
-        self.nodes.push(Node::new(data));
+        self.nodes.push(Node::new_seeded(data, self.seed));
+        self.seed += 1;
         self.nodes.len() - 1
     }
 
