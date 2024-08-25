@@ -11,7 +11,7 @@ use std::{
 use crate::{graph::Graph, simgraph::SimGraph, vectors::Vector3D};
 use camera::Camera;
 use cgmath::Deg;
-use glium::{glutin::surface::WindowSurface, implement_vertex, uniform, Display, Surface};
+use glium::{glutin::surface::WindowSurface, implement_vertex, uniform, Display, Frame, Surface};
 
 use winit::{
     event::{Event, WindowEvent},
@@ -67,30 +67,25 @@ where
         display: Display<WindowSurface>,
         window: Window,
     ) {
+        //Timing
         let mut last_redraw = Instant::now();
         let mut last_pause = Instant::now();
+        // Camera
         let mut camera = Camera::new(Vector3D::new([0.0, 0.0, 5.0]));
         camera.look_at(&Vector3D::new([0.0, 0.0, 0.0]));
         let mut cursor = winit::dpi::PhysicalPosition::new(0.0, 0.0);
 
+        //Config
         let toggle_sim = Arc::new(RwLock::new(false));
         let mut toggle_quadtree = false;
-        let mut sim = self.sim.clone();
+
+        let sim = self.sim.clone();
 
         let self_arc = Arc::new(Mutex::new(self));
         let display_arc = Arc::new(display);
         let graph = Arc::new(RwLock::new(graph));
 
-        let graph_clone = Arc::clone(&graph);
-        let toggle_sim_clone = Arc::clone(&toggle_sim);
-        thread::spawn(move || loop {
-            let toggle_sim_read_guard = toggle_sim_clone.read().unwrap();
-            let sim_toggle = *toggle_sim_read_guard;
-            drop(toggle_sim_read_guard);
-            if sim_toggle {
-                sim.simulation_step(Arc::clone(&graph_clone));
-            }
-        });
+        Self::spawn_simulation_thread(Arc::clone(&toggle_sim), sim, Arc::clone(&graph));
 
         event_loop.run(move |event, _, control_flow| {
             *control_flow = ControlFlow::Poll;
@@ -172,27 +167,11 @@ where
         let mut target = display.draw();
         target.clear_color_and_depth((0.0, 0.0, 0.0, 1.0), 1.0);
 
-        let mut max: f32 = -INFINITY;
-        let mut min: f32 = INFINITY;
-        let graph_read_guard = graph.read().unwrap();
-        for n in graph_read_guard.get_node_iter() {
-            max = max.max(n.position[0]);
-            min = min.min(n.position[0]);
-        }
-
-        let mut max_m = 0.0;
-        for n in graph_read_guard.get_node_iter() {
-            max_m = n.mass.max(max_m);
-        }
-        drop(graph_read_guard);
-
-        let (width, height) = target.get_dimensions();
-        let perspective: [[f32; 4]; 4] =
-            cgmath::perspective(Deg(45.0f32), width as f32 / height as f32, 0.1, 1000.0).into();
+        let max_mass = Self::find_max_mass(Arc::clone(&graph));
 
         let uniforms = uniform! {
             matrix: camera.matrix(),
-            projection: perspective
+            projection: build_perspective_matrix(&target)
         };
 
         let params = glium::DrawParameters {
@@ -208,7 +187,7 @@ where
             Arc::clone(&graph),
             &mut target,
             display,
-            &max_m,
+            &max_mass,
             &uniforms,
             &params,
         );
@@ -216,7 +195,7 @@ where
             Arc::clone(&graph),
             &mut target,
             display,
-            &max_m,
+            &max_mass,
             &uniforms,
             &params,
         );
@@ -226,4 +205,34 @@ where
 
         target.finish().unwrap();
     }
+
+    fn spawn_simulation_thread(
+        toggle_sim: Arc<RwLock<bool>>,
+        mut sim: SimGraph<T>,
+        graph: Arc<RwLock<Graph<T>>>,
+    ) {
+        thread::spawn(move || loop {
+            let toggle_sim_read_guard = toggle_sim.read().unwrap();
+            let sim_toggle = *toggle_sim_read_guard;
+            drop(toggle_sim_read_guard);
+
+            if sim_toggle {
+                sim.simulation_step(Arc::clone(&graph));
+            }
+        });
+    }
+
+    fn find_max_mass(graph: Arc<RwLock<Graph<T>>>) -> f32 {
+        let graph_read_guard = graph.read().unwrap();
+        let mut max_m = 0.0;
+        for n in graph_read_guard.get_node_iter() {
+            max_m = n.mass.max(max_m);
+        }
+        max_m
+    }
+}
+
+fn build_perspective_matrix(target: &Frame) -> [[f32; 4]; 4] {
+    let (width, height) = target.get_dimensions();
+    cgmath::perspective(Deg(45.0f32), width as f32 / height as f32, 0.1, 1000.0).into()
 }
