@@ -1,4 +1,4 @@
-use crate::vectors::{Vector2D, Vector3D};
+use crate::vectors::Vector3D;
 
 pub struct Camera {
     pub position: Vector3D,
@@ -30,17 +30,25 @@ impl Camera {
         let d = self.direction;
         let r = self.right;
         let u = self.up;
-        let p = self.position;
+        let mut pp = self.position;
+        pp.scalar(-1.0);
+        let px = pp.dot(&r);
+        let py = pp.dot(&u);
+        let pz = pp.dot(&d);
         [
             [r[0], u[0], d[0], 0.0],
             [r[1], u[1], d[1], 0.0],
             [r[2], u[2], d[2], 0.0],
-            [
-                r[0] * -p[0] + r[1] * -p[1] + r[2] * -p[2],
-                u[0] * -p[0] + u[1] * -p[1] + u[2] * -p[2],
-                d[0] * -p[0] + d[1] * -p[1] + d[2] * -p[2],
-                1.0,
-            ],
+            [px, py, pz, 1.0],
+        ]
+    }
+
+    pub fn ortho(l: f32, r: f32, t: f32, b: f32, f: f32, n: f32) -> [[f32; 4]; 4] {
+        [
+            [2.0 / (r - l), 0.0, 0.0, -((r + l) / (r - l))],
+            [0.0, 2.0 / (t - b), 0.0, -((t + b) / (t - b))],
+            [0.0, 0.0, 1.0, 0.0],
+            [0.0, 0.0, 0.0, 1.0f32],
         ]
     }
 

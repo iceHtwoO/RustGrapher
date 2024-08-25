@@ -1,6 +1,6 @@
 use core::f32;
 use std::{
-    f32::{consts::PI, INFINITY},
+    f32::INFINITY,
     fmt::Debug,
     marker::PhantomData,
     sync::{Arc, Mutex, RwLock},
@@ -8,21 +8,11 @@ use std::{
     time::Instant,
 };
 
-use crate::{
-    graph::{Graph, Node},
-    quadtree::{BoundingBox2D, QuadTree},
-    simgraph::SimGraph,
-    vectors::{Vector2D, Vector3D},
-};
+use crate::{graph::Graph, simgraph::SimGraph, vectors::Vector3D};
 use camera::Camera;
-use glium::{
-    glutin::surface::WindowSurface,
-    implement_vertex, uniform,
-    uniforms::{AsUniformValue, Uniforms, UniformsStorage},
-    Display, DrawParameters, Frame, Surface,
-};
+use cgmath::Deg;
+use glium::{glutin::surface::WindowSurface, implement_vertex, uniform, Display, Surface};
 
-use rand::{rngs::StdRng, Rng, SeedableRng};
 use winit::{
     event::{Event, WindowEvent},
     event_loop::{ControlFlow, EventLoop},
@@ -32,6 +22,8 @@ use winit::{
 mod camera;
 mod draw;
 mod shapes;
+
+const SCROLL_SENSITIVITY: f32 = 2.0;
 
 #[derive(Copy, Clone, Debug)]
 struct Vertex {
@@ -77,8 +69,8 @@ where
     ) {
         let mut last_redraw = Instant::now();
         let mut last_pause = Instant::now();
-        let scroll_scale: f32 = 1.0;
-        let mut camera = Camera::new(Vector3D::new([0.0, 0.0, 0.0]));
+        let mut camera = Camera::new(Vector3D::new([0.0, 0.0, 5.0]));
+        camera.look_at(&Vector3D::new([0.0, 0.0, 0.0]));
         let mut cursor = winit::dpi::PhysicalPosition::new(0.0, 0.0);
 
         let toggle_sim = Arc::new(RwLock::new(false));
@@ -111,9 +103,9 @@ where
                     WindowEvent::MouseWheel { delta, .. } => match delta {
                         winit::event::MouseScrollDelta::LineDelta(_, y) => {
                             if y < 0.0 {
-                                camera.position[2] -= 0.25;
+                                camera.position[2] -= SCROLL_SENSITIVITY;
                             } else if y > 0.0 {
-                                camera.position[2] += 0.25;
+                                camera.position[2] += SCROLL_SENSITIVITY;
                             }
                         }
                         _ => (),
@@ -130,11 +122,9 @@ where
                             }
                         }
                         Some(winit::event::VirtualKeyCode::Return) => {
-                            camera.position.set(
-                                Vector2D::new(graph.read().unwrap().avg_pos())
-                                    .to_3d()
-                                    .get_position(),
-                            );
+                            let avg = graph.read().unwrap().avg_pos();
+                            camera.position[0] = avg[0];
+                            camera.position[1] = avg[1];
                         }
                         Some(winit::event::VirtualKeyCode::Q) => {
                             if last_pause.elapsed().as_millis() >= 400 {
@@ -156,7 +146,7 @@ where
                 last_redraw = Instant::now();
 
                 let camera_factor: f32 = 1.0;
-                /*if cursor.x < window.inner_size().width as f64 * 0.1 {
+                if cursor.x < window.inner_size().width as f64 * 0.1 {
                     camera.position[0] -= camera_factor;
                 } else if cursor.x > window.inner_size().width as f64 * 0.9 {
                     camera.position[0] += camera_factor;
@@ -165,8 +155,7 @@ where
                     camera.position[1] += camera_factor;
                 } else if cursor.y > window.inner_size().height as f64 * 0.9 {
                     camera.position[1] -= camera_factor;
-                }*/
-                camera.look_at(&Vector3D::new([0.0, 0.0, -1.0]));
+                }
 
                 self_mutex.draw_graph(&display_arc, Arc::clone(&graph), &camera, toggle_quadtree);
             }
@@ -197,29 +186,13 @@ where
         }
         drop(graph_read_guard);
 
-        let cpos = camera.position;
-
-        let perspective = {
-            let (width, height) = target.get_dimensions();
-            let aspect_ratio = height as f32 / width as f32;
-
-            let fov: f32 = 3.141592 / 3.0;
-            let zfar = 1024.0;
-            let znear = 0.1;
-
-            let f = 1.0 / (fov / 2.0).tan();
-
-            [
-                [f * aspect_ratio, 0.0, 0.0, 0.0],
-                [0.0, f, 0.0, 0.0],
-                [0.0, 0.0, (zfar + znear) / (zfar - znear), 1.0],
-                [0.0, 0.0, -(2.0 * zfar * znear) / (zfar - znear), 0.0],
-            ]
-        };
+        let (width, height) = target.get_dimensions();
+        let perspective: [[f32; 4]; 4] =
+            cgmath::perspective(Deg(45.0f32), width as f32 / height as f32, 0.1, 1000.0).into();
 
         let uniforms = uniform! {
             matrix: camera.matrix(),
-            perspective: perspective
+            projection: perspective
         };
 
         let params = glium::DrawParameters {

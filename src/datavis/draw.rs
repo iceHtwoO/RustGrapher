@@ -1,32 +1,20 @@
 use core::f32;
 use std::{
     f32::{consts::PI, INFINITY},
-    fmt::Debug,
-    marker::PhantomData,
-    sync::{Arc, Mutex, RwLock},
-    thread,
-    time::Instant,
+    sync::{Arc, RwLock},
 };
 
 use crate::{
     graph::{Graph, Node},
     quadtree::{BoundingBox2D, QuadTree},
-    simgraph::SimGraph,
-    vectors::{Vector2D, Vector3D},
 };
 use glium::{
     glutin::surface::WindowSurface,
-    implement_vertex, uniform,
     uniforms::{AsUniformValue, Uniforms, UniformsStorage},
     Display, DrawParameters, Frame, Surface,
 };
 
 use rand::{rngs::StdRng, Rng, SeedableRng};
-use winit::{
-    event::{Event, WindowEvent},
-    event_loop::{ControlFlow, EventLoop},
-    window::Window,
-};
 
 use super::{shapes, Vertex};
 
@@ -37,12 +25,12 @@ in vec3 position;
 in vec4 color;
 out vec4 vertex_color;
 
-uniform mat4 perspective;
+uniform mat4 projection;
 uniform mat4 matrix;
 
 void main() {
     vertex_color = color;
-    gl_Position = perspective* matrix * vec4(position, 1.0);
+    gl_Position = projection * matrix * vec4(position, 1.0);
 }
 "#;
 
@@ -89,8 +77,8 @@ pub fn draw_edge<T, H, R>(
         ];
 
         shape.append(&mut shapes::line(
-            [n1.position[0], n1.position[1], 0.1],
-            [n2.position[0], n2.position[1], 0.1],
+            [n1.position[0], n1.position[1], -0.1],
+            [n2.position[0], n2.position[1], -0.1],
             color,
         ));
     }
@@ -122,7 +110,7 @@ pub fn draw_node<T, H, R>(
     let graph_read_guard = graph.read().unwrap();
 
     for (e, node) in graph_read_guard.get_node_iter().enumerate() {
-        let pos = [node.position[0], node.position[1], 0.1];
+        let pos = [node.position[0], node.position[1], 0.0];
         let r = f32::sqrt(node.mass * PI) * 0.1;
 
         let mut rand = StdRng::seed_from_u64(e as u64);
@@ -133,7 +121,7 @@ pub fn draw_node<T, H, R>(
             (node.mass / max_m) as f32,
         ];
 
-        shape.append(&mut shapes::circle(pos, color, r, 5));
+        shape.append(&mut shapes::circle(pos, color, r, 10));
     }
 
     let vertex_buffer = glium::VertexBuffer::new(display, &shape).unwrap();
@@ -206,7 +194,7 @@ where
     }
     let boundary = quadtree.boundary.clone();
 
-    let pos = [boundary.center[0], boundary.center[1], 0.0];
+    let pos = [boundary.center[0], boundary.center[1], 0.1];
 
     shape.append(&mut shapes::rectangle_lines(
         pos,

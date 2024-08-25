@@ -51,6 +51,14 @@ where
         }
     }
 
+    pub fn dot(&self, other: &Self) -> f32 {
+        let mut sum: f32 = 0.0;
+        for i in 0..N {
+            sum += self.position[i] * other.position[i];
+        }
+        sum
+    }
+
     pub fn len(&self) -> f32 {
         let mut sum: f32 = 0.0;
         for i in 0..N {
