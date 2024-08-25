@@ -1,6 +1,5 @@
 use core::f32;
 use std::{
-    f32::INFINITY,
     fmt::Debug,
     marker::PhantomData,
     sync::{Arc, Mutex, RwLock},

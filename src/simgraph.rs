@@ -277,6 +277,11 @@ where
         let dist = Self::compute_distance(n1, n2);
 
         let force_magnitude = self.spring_stiffness * (dist - self.spring_default_len);
+
+        if dist == 0.0 {
+            return Vector2D::new([force_magnitude, force_magnitude]);
+        }
+
         let mut unit_vec = Vector2D::new([vec[0] / dist, vec[1] / dist]);
 
         unit_vec.scalar(-force_magnitude);

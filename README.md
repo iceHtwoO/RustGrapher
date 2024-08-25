@@ -5,4 +5,4 @@ A [force directed Graph](https://en.wikipedia.org/wiki/Force-directed_graph_draw
 ### 1_000 Nodes
 ![plot](./example_images/example2.png)
 ### 10_000 Nodes
-![plot](./example_images/example.png)
+![plot](./example_images/example.gif)
