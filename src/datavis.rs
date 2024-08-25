@@ -225,7 +225,9 @@ where
         let graph_read_guard = graph.read().unwrap();
         let mut max_m = 0.0;
         for n in graph_read_guard.get_node_iter() {
-            max_m = n.mass.max(max_m);
+            if let Some(rb) = &n.rigidbody {
+                max_m = rb.mass.max(max_m);
+            }
         }
         max_m
     }

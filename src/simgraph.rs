@@ -8,7 +8,8 @@ use std::{
 use rand::Rng;
 
 use crate::{
-    graph::{Graph, Node},
+    graph::Graph,
+    properties::RigidBody2D,
     quadtree::{BoundingBox2D, QuadTree},
     vectors::Vector2D,
 };
@@ -135,17 +136,22 @@ where
             let graph_read_guard = graph.read().unwrap();
 
             for i in start_index..end_index {
-                let n1 = graph_read_guard.get_node_by_index(i);
+                let n1 = graph_read_guard
+                    .get_node_by_index(i)
+                    .rigidbody
+                    .as_ref()
+                    .unwrap();
                 if repel_force {
-                    let node_approximations = quadtree.get_stack(&n1.position, theta);
+                    // Get node approximation from Quadtree
+                    let node_approximations =
+                        quadtree.get_stack(&n1.position.get_position(), theta);
+
+                    // Calculate Repel Force
                     for node_approximation in node_approximations {
-                        let node_approximation_particle = Node {
-                            data: n1.data.clone(),
-                            position: node_approximation.get_position_ref(),
-                            velocity: [0.0, 0.0],
-                            mass: node_approximation.mass,
-                            fixed: false,
-                        };
+                        let node_approximation_particle = RigidBody2D::new(
+                            Vector2D::new(node_approximation.get_position_ref()),
+                            node_approximation.mass,
+                        );
                         let repel_force =
                             Self::repel_force(repel_force_const, &n1, &node_approximation_particle);
 
@@ -153,6 +159,7 @@ where
                     }
                 }
 
+                //Calculate Gravity Force
                 if gravity {
                     let gravity_force = Self::compute_center_gravity(gravity_force, &n1);
                     force_vec[i] += gravity_force;
@@ -180,10 +187,11 @@ where
         let mut min_y = INFINITY;
 
         for node in graph_read_guard.get_node_iter() {
-            max_x = max_x.max(node.position[0]);
-            max_y = max_y.max(node.position[1]);
-            min_x = min_x.min(node.position[0]);
-            min_y = min_y.min(node.position[1]);
+            let rb: &RigidBody2D = node.rigidbody.as_ref().unwrap();
+            max_x = max_x.max(rb.position[0]);
+            max_y = max_y.max(rb.position[1]);
+            min_x = min_x.min(rb.position[0]);
+            min_y = min_y.min(rb.position[1]);
         }
 
         let w = max_x - min_x;
@@ -192,7 +200,8 @@ where
         let mut quadtree = QuadTree::new(boundary.clone());
 
         for n in graph_read_guard.get_node_iter() {
-            quadtree.insert(None, n.position.clone(), n.mass);
+            let rb: &RigidBody2D = n.rigidbody.as_ref().unwrap();
+            quadtree.insert(None, rb.position.get_position(), rb.mass);
         }
         quadtree
     }
@@ -204,13 +213,14 @@ where
     ) {
         let mut graph_write_guard = graph.write().unwrap();
         let force_vec = force_vec_arc.lock().unwrap();
-        for (i, n1) in graph_write_guard.get_node_mut_iter().enumerate() {
+        for (i, n) in graph_write_guard.get_node_mut_iter().enumerate() {
             let node_force = force_vec[i];
+            let rb = n.rigidbody.as_mut().unwrap();
 
-            n1.velocity[0] +=
-                force_vec[i][0].signum() * (node_force[0] / n1.mass).abs() * self.delta_time;
-            n1.velocity[1] +=
-                force_vec[i][1].signum() * (node_force[1] / n1.mass).abs() * self.delta_time;
+            rb.velocity[0] +=
+                force_vec[i][0].signum() * (node_force[0] / rb.mass).abs() * self.delta_time;
+            rb.velocity[1] +=
+                force_vec[i][1].signum() * (node_force[1] / rb.mass).abs() * self.delta_time;
         }
     }
 
@@ -218,35 +228,31 @@ where
         let mut graph_write_guard = graph.write().unwrap();
 
         'damping: for n in graph_write_guard.get_node_mut_iter() {
-            if n.fixed {
-                n.velocity[0] = 0.0;
-                n.velocity[1] = 0.0;
+            let rb = n.rigidbody.as_mut().unwrap();
+            if rb.fixed {
+                rb.velocity[0] = 0.0;
+                rb.velocity[1] = 0.0;
                 continue 'damping;
             }
 
-            n.velocity[0] *= self.damping;
-            n.velocity[1] *= self.damping;
+            rb.velocity.scalar(self.damping);
 
-            n.position[0] += n.velocity[0] * self.delta_time;
-            n.position[1] += n.velocity[1] * self.delta_time;
+            rb.position[0] += rb.velocity[0] * self.delta_time;
+            rb.position[1] += rb.velocity[1] * self.delta_time;
         }
     }
 
-    fn compute_direction_vector(n1: &Node<T>, n2: &Node<T>) -> [f32; 2] {
+    fn compute_direction_vector(n1: &RigidBody2D, n2: &RigidBody2D) -> [f32; 2] {
         [
             n2.position[0] - n1.position[0],
             n2.position[1] - n1.position[1],
         ]
     }
 
-    pub fn compute_distance(n1: &Node<T>, n2: &Node<T>) -> f32 {
+    pub fn compute_distance(n1: &RigidBody2D, n2: &RigidBody2D) -> f32 {
         f32::sqrt(
             (n2.position[0] - n1.position[0]).powi(2) + (n2.position[1] - n1.position[1]).powi(2),
         )
-    }
-
-    pub fn compute_distance_to_center(n1: &Node<T>) -> f32 {
-        f32::sqrt((n1.position[0]).powi(2) + (n1.position[1]).powi(2))
     }
 
     fn add_graph_spring_forces(
@@ -260,8 +266,8 @@ where
         for edge in graph_arc.read().unwrap().get_edge_iter() {
             let g = graph_arc.read().unwrap();
 
-            let n1 = g.get_node_by_index(edge.0);
-            let n2 = g.get_node_by_index(edge.1);
+            let n1 = g.get_node_by_index(edge.0).rigidbody.as_ref().unwrap();
+            let n2 = g.get_node_by_index(edge.1).rigidbody.as_ref().unwrap();
 
             let spring_force = self.compute_spring_force(n1, n2);
 
@@ -270,7 +276,7 @@ where
         }
     }
 
-    fn compute_spring_force(&self, n1: &Node<T>, n2: &Node<T>) -> Vector2D {
+    fn compute_spring_force(&self, n1: &RigidBody2D, n2: &RigidBody2D) -> Vector2D {
         let vec = Self::compute_direction_vector(n1, n2);
         let dist = Self::compute_distance(n1, n2);
 
@@ -286,7 +292,7 @@ where
         unit_vec
     }
 
-    fn repel_force(repel_force_const: f32, n1: &Node<T>, n2: &Node<T>) -> Vector2D {
+    fn repel_force(repel_force_const: f32, n1: &RigidBody2D, n2: &RigidBody2D) -> Vector2D {
         let vec = Self::compute_direction_vector(n1, n2);
         let mut dir_vec = Vector2D::new(vec);
         let mut force = Vector2D::new([0.0, 0.0]);
@@ -313,7 +319,7 @@ where
         dir_vec
     }
 
-    fn compute_center_gravity(gravity_force: f32, n1: &Node<T>) -> Vector2D {
+    fn compute_center_gravity(gravity_force: f32, n1: &RigidBody2D) -> Vector2D {
         let mut force = Vector2D::new([0.0, 0.0]);
         if n1.position[0].is_finite() {
             force[0] = gravity_force * (-n1.position[0]) * n1.mass;

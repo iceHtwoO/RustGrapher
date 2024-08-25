@@ -5,6 +5,8 @@ use std::{
 
 use rand::{rngs::StdRng, Rng, SeedableRng};
 
+use crate::{properties::RigidBody2D, vectors::Vector2D};
+
 #[derive(Debug, Clone)]
 pub enum GraphType {
     Directed,
@@ -25,10 +27,7 @@ where
     T: PartialEq,
 {
     pub data: T,
-    pub position: [f32; 2],
-    pub velocity: [f32; 2],
-    pub mass: f32,
-    pub fixed: bool,
+    pub rigidbody: Option<RigidBody2D>,
 }
 
 impl<T> PartialEq for Node<T>
@@ -52,10 +51,7 @@ where
         let y: f32 = rng.gen_range(-60.0..60.0);
         Self {
             data,
-            position: [x, y],
-            velocity: [0.0, 0.0],
-            mass: 1.0,
-            fixed: false,
+            rigidbody: Some(RigidBody2D::new(Vector2D::new([x, y]), 1.0)),
         }
     }
     pub fn new_seeded(data: T, seed: u64) -> Self {
@@ -64,10 +60,7 @@ where
         let y: f32 = rng.gen_range(-60.0..60.0);
         Self {
             data,
-            position: [x, y],
-            velocity: [0.0, 0.0],
-            mass: 1.0,
-            fixed: false,
+            rigidbody: Some(RigidBody2D::new(Vector2D::new([x, y]), 1.0)),
         }
     }
 }
@@ -103,23 +96,6 @@ where
         self.nodes.push(Node::new_seeded(data, self.seed));
         self.seed += 1;
         self.nodes.len() - 1
-    }
-
-    pub fn add_node_pos(
-        &mut self,
-        data: T,
-        position: [f32; 2],
-        fixed: bool,
-        mass: f32,
-    ) -> DefaultIndex {
-        self.nodes.push(Node {
-            data,
-            position,
-            velocity: [0.0, 0.0],
-            mass,
-            fixed,
-        });
-        self.nodes.len()
     }
 
     pub fn add_edge(&mut self, i1: DefaultIndex, i2: DefaultIndex, weight: u64) {
@@ -163,10 +139,6 @@ where
         self.edges.iter()
     }
 
-    pub fn set_node_velocity(&mut self, i: DefaultIndex, velocity: [f32; 2]) {
-        self.nodes.get_mut(i).unwrap().velocity = velocity;
-    }
-
     pub fn get_incoming_count(&self, i: DefaultIndex) -> u32 {
         match self.graph_type {
             GraphType::Directed => {
@@ -200,15 +172,17 @@ where
         }
 
         for (i, node) in self.get_node_mut_iter().enumerate() {
-            node.mass += count[i] as f32 * node.mass as f32;
+            let rb = node.rigidbody.as_mut().unwrap();
+            rb.mass += count[i] as f32 * rb.mass as f32;
         }
     }
 
     pub fn avg_pos(&self) -> [f32; 2] {
         let mut avg_pos = [0.0, 0.0];
         for n in self.get_node_iter() {
-            avg_pos[0] += n.position[0];
-            avg_pos[1] += n.position[1];
+            let rb = n.rigidbody.as_ref().unwrap();
+            avg_pos[0] += rb.position[0];
+            avg_pos[1] += rb.position[1];
         }
 
         avg_pos[0] /= self.get_node_count() as f32;

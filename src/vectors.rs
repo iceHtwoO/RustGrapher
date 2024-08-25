@@ -24,6 +24,7 @@ where
     pub fn new(position: [f32; N]) -> Self {
         Self { position }
     }
+
     pub fn set(&mut self, position: [f32; N]) {
         self.position = position;
     }
@@ -200,6 +201,12 @@ impl Vector2D {
     pub fn to_3d(self) -> Vector3D {
         Vector3D::new([self.position[0], self.position[1], 0.0])
     }
+
+    pub fn empty() -> Vector2D {
+        Self {
+            position: [0.0, 0.0],
+        }
+    }
 }
 
 impl Vector3D {
@@ -212,6 +219,12 @@ impl Vector3D {
                 a[2] * b[0] - a[0] * b[2],
                 a[0] * b[1] - a[1] * b[0],
             ],
+        }
+    }
+
+    pub fn empty() -> Vector3D {
+        Self {
+            position: [0.0, 0.0, 0.0],
         }
     }
 }

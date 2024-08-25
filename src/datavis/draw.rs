@@ -65,8 +65,16 @@ pub fn draw_edge<T, H, R>(
     let graph_read_guard = graph.read().unwrap();
 
     for edge in graph_read_guard.get_edge_iter() {
-        let n1 = graph_read_guard.get_node_by_index(edge.0);
-        let n2 = graph_read_guard.get_node_by_index(edge.1);
+        let n1 = graph_read_guard
+            .get_node_by_index(edge.0)
+            .rigidbody
+            .as_ref()
+            .unwrap();
+        let n2 = graph_read_guard
+            .get_node_by_index(edge.1)
+            .rigidbody
+            .as_ref()
+            .unwrap();
 
         let min_m = n1.mass.min(n2.mass);
         let color = [
@@ -110,15 +118,16 @@ pub fn draw_node<T, H, R>(
     let graph_read_guard = graph.read().unwrap();
 
     for (e, node) in graph_read_guard.get_node_iter().enumerate() {
-        let pos = [node.position[0], node.position[1], 0.0];
-        let r = f32::sqrt(node.mass * PI) * 0.1;
+        let rb = node.rigidbody.as_ref().unwrap();
+        let pos = [rb.position[0], rb.position[1], 0.0];
+        let r = f32::sqrt(rb.mass * PI) * 0.1;
 
         let mut rand = StdRng::seed_from_u64(e as u64);
         let color = [
             (rand.gen_range(10..=100) as f32) / 100.0,
             (rand.gen_range(10..=100) as f32) / 100.0,
             (rand.gen_range(10..=100) as f32) / 100.0,
-            (node.mass / max_m) as f32,
+            (rb.mass / max_m) as f32,
         ];
 
         shape.append(&mut shapes::circle(pos, color, r, 10));
@@ -156,10 +165,11 @@ pub fn draw_quadtree<T, H, R>(
     let mut min_y = INFINITY;
 
     for node in graph_read_guard.get_node_iter() {
-        max_x = max_x.max(node.position[0]);
-        max_y = max_y.max(node.position[1]);
-        min_x = min_x.min(node.position[0]);
-        min_y = min_y.min(node.position[1]);
+        let rb = node.rigidbody.as_ref().unwrap();
+        max_x = max_x.max(rb.position[0]);
+        max_y = max_y.max(rb.position[1]);
+        min_x = min_x.min(rb.position[0]);
+        min_y = min_y.min(rb.position[1]);
     }
 
     let w = max_x - min_x;
@@ -169,7 +179,8 @@ pub fn draw_quadtree<T, H, R>(
     let mut quadtree = QuadTree::new(boundary.clone());
 
     for node in graph_read_guard.get_node_iter() {
-        quadtree.insert(Some(node), node.position, node.mass);
+        let rb = node.rigidbody.as_ref().unwrap();
+        quadtree.insert(Some(node), rb.position.get_position(), rb.mass);
     }
 
     get_qt_vertex(&quadtree, &mut shape);
