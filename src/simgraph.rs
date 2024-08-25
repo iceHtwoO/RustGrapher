@@ -149,15 +149,13 @@ where
                         let repel_force =
                             Self::repel_force(repel_force_const, &n1, &node_approximation_particle);
 
-                        force_vec[i][0] += repel_force[0];
-                        force_vec[i][1] += repel_force[1];
+                        force_vec[i] += repel_force;
                     }
                 }
 
                 if gravity {
                     let gravity_force = Self::compute_center_gravity(gravity_force, &n1);
-                    force_vec[i][0] += gravity_force[0];
-                    force_vec[i][1] += gravity_force[1];
+                    force_vec[i] += gravity_force;
                 }
             }
 
