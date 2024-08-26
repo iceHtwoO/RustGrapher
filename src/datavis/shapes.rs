@@ -1,4 +1,4 @@
-use std::f32::consts::PI;
+use std::f32::consts::{PI, TAU};
 
 use super::Vertex;
 
@@ -123,6 +123,27 @@ pub fn line(p1: [f32; 3], p2: [f32; 3], color: [f32; 4]) -> Vec<Vertex> {
         position: p2,
         color,
     });
+
+    shape
+}
+
+pub fn sphere(p1: [f32; 3], color: [f32; 4], r: f32, res: u32) -> Vec<Vertex> {
+    let mut shape = Vec::with_capacity(2);
+
+    for i in 0..res {
+        let lon = (TAU / res as f32 * i as f32) - PI;
+        for j in 0..res {
+            let lat = (PI / res as f32 * j as f32) - PI / 2.0;
+            shape.push(Vertex {
+                position: [
+                    r * lon.sin() * lat.cos() + p1[0],
+                    r * lon.sin() * lat.sin() + p1[1],
+                    r * lon.cos() + p1[2],
+                ],
+                color,
+            });
+        }
+    }
 
     shape
 }

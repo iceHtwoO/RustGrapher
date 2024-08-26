@@ -1,5 +1,6 @@
 use core::f32;
 use std::{
+    f32::consts::{PI, TAU},
     fmt::Debug,
     marker::PhantomData,
     sync::{Arc, Mutex, RwLock},
@@ -70,7 +71,7 @@ where
         let mut last_redraw = Instant::now();
         let mut last_pause = Instant::now();
         // Camera
-        let mut camera = Camera::new(Vector3D::new([0.0, 0.0, 5.0]));
+        let mut camera = Camera::new(Vector3D::new([0.0, 0.0, 50.0]));
         camera.look_at(&Vector3D::new([0.0, 0.0, 0.0]));
         let mut cursor = winit::dpi::PhysicalPosition::new(0.0, 0.0);
 

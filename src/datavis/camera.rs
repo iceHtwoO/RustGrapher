@@ -1,4 +1,4 @@
-use crate::vectors::Vector3D;
+use crate::vectors::{Vector2D, Vector3D};
 
 pub struct Camera {
     pub position: Vector3D,
@@ -24,6 +24,18 @@ impl Camera {
 
         self.right = Vector3D::new([0.0, 1.0, 0.0]).cross(&self.direction);
         self.up = self.direction.cross(&self.right);
+    }
+
+    pub fn rotate(&mut self, pivot: Vector2D, rad: f32) {
+        let s = rad.sin();
+        let c = rad.cos();
+        self.position[0] -= pivot[0];
+        self.position[2] -= pivot[1];
+
+        let xnew = self.position[0] * c - self.position[2] * s;
+        let znew = self.position[0] * s + self.position[2] * c;
+
+        self.position = Vector3D::new([xnew + pivot[0], self.position[1], znew + pivot[1]])
     }
 
     pub fn matrix(&self) -> [[f32; 4]; 4] {

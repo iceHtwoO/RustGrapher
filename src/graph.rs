@@ -54,13 +54,13 @@ where
             rigidbody: Some(RigidBody2D::new(Vector2D::new([x, y]), 1.0)),
         }
     }
-    pub fn new_seeded(data: T, seed: u64) -> Self {
+    pub fn new_rb(data: T, seed: u64, rb: RigidBody2D) -> Self {
         let mut rng = StdRng::seed_from_u64(seed);
         let x: f32 = rng.gen_range(-60.0..60.0);
         let y: f32 = rng.gen_range(-60.0..60.0);
         Self {
             data,
-            rigidbody: Some(RigidBody2D::new(Vector2D::new([x, y]), 1.0)),
+            rigidbody: Some(rb),
         }
     }
 }
@@ -93,7 +93,13 @@ where
     }
 
     pub fn add_node(&mut self, data: T) -> DefaultIndex {
-        self.nodes.push(Node::new_seeded(data, self.seed));
+        self.nodes.push(Node::new(data));
+        self.seed += 1;
+        self.nodes.len() - 1
+    }
+
+    pub fn add_node_rb(&mut self, data: T, rb: RigidBody2D) -> DefaultIndex {
+        self.nodes.push(Node::new_rb(data, 0, rb));
         self.seed += 1;
         self.nodes.len() - 1
     }
