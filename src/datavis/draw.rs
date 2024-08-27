@@ -16,7 +16,7 @@ use glium::{
 
 use rand::{rngs::StdRng, Rng, SeedableRng};
 
-use super::{shapes, Vertex};
+use super::shapes::{self, Vertex};
 
 static VERTEX_SHADER_SRC: &str = r#"
 #version 150
@@ -103,7 +103,6 @@ pub fn draw_node<T, H, R>(
     graph: Arc<RwLock<Graph<T>>>,
     target: &mut Frame,
     display: &Display<WindowSurface>,
-    max_m: &f32,
     uniform: &UniformsStorage<H, R>,
     params: &DrawParameters,
 ) where
@@ -114,31 +113,42 @@ pub fn draw_node<T, H, R>(
     let program =
         glium::Program::from_source(display, VERTEX_SHADER_SRC, FRAGMENT_SHADER_SRC, None).unwrap();
 
-    let mut shape: Vec<Vertex> = vec![];
+    const RESOLUTION: usize = 15;
     let graph_read_guard = graph.read().unwrap();
+
+    let mut shape: Vec<Vertex> =
+        Vec::with_capacity(graph_read_guard.get_node_count() * 3 * RESOLUTION);
 
     for (e, node) in graph_read_guard.get_node_iter().enumerate() {
         let rb = node.rigidbody.as_ref().unwrap();
-        let pos = [rb.position[0], rb.position[1], 0.0];
+        let position = [rb.position[0], rb.position[1], 0.0];
         let r = f32::sqrt(rb.mass * PI) * 0.1;
 
-        let mut rand = StdRng::seed_from_u64(e as u64);
-        let color = [
-            (rand.gen_range(10..=100) as f32) / 100.0,
-            (rand.gen_range(10..=100) as f32) / 100.0,
-            (rand.gen_range(10..=100) as f32) / 100.0,
-            (rb.mass / max_m) as f32,
-        ];
-
-        shape.append(&mut shapes::circle(pos, color, r, 10));
+        shape.append(&mut shapes::circle(
+            position,
+            random_color(e as usize),
+            r,
+            RESOLUTION,
+        ));
     }
 
-    let vertex_buffer = glium::VertexBuffer::new(display, &shape).unwrap();
     let indices = glium::index::NoIndices(glium::index::PrimitiveType::TrianglesList);
+
+    let vertex_buffer = glium::VertexBuffer::new(display, &shape).unwrap();
 
     target
         .draw(&vertex_buffer, indices, &program, uniform, params)
         .unwrap();
+}
+
+pub fn random_color(seed: usize) -> [f32; 4] {
+    let mut rand = StdRng::seed_from_u64(seed as u64);
+    [
+        (rand.gen_range(10..=100) as f32) / 100.0,
+        (rand.gen_range(10..=100) as f32) / 100.0,
+        (rand.gen_range(10..=100) as f32) / 100.0,
+        1.0,
+    ]
 }
 
 pub fn draw_quadtree<T, H, R>(

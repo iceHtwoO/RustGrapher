@@ -1,6 +1,13 @@
 use std::f32::consts::{PI, TAU};
 
-use super::Vertex;
+use glium::implement_vertex;
+
+#[derive(Copy, Clone, Debug)]
+pub struct Vertex {
+    pub position: [f32; 3],
+    pub color: [f32; 4],
+}
+implement_vertex!(Vertex, position, color);
 
 #[allow(dead_code)]
 pub fn rectangle(pos: [f32; 3], color: [f32; 4], s: f32) -> Vec<Vertex> {
@@ -127,6 +134,7 @@ pub fn line(p1: [f32; 3], p2: [f32; 3], color: [f32; 4]) -> Vec<Vertex> {
     shape
 }
 
+#[allow(dead_code)]
 pub fn sphere(p1: [f32; 3], color: [f32; 4], r: f32, res: u32) -> Vec<Vertex> {
     let mut shape = Vec::with_capacity(2);
 

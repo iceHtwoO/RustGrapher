@@ -55,6 +55,7 @@ impl Camera {
         ]
     }
 
+    //TODO: FIX
     pub fn ortho(l: f32, r: f32, t: f32, b: f32, f: f32, n: f32) -> [[f32; 4]; 4] {
         [
             [2.0 / (r - l), 0.0, 0.0, -((r + l) / (r - l))],

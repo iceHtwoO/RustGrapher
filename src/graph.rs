@@ -3,7 +3,7 @@ use std::{
     vec,
 };
 
-use rand::{rngs::StdRng, Rng, SeedableRng};
+use rand::{thread_rng, Rng};
 
 use crate::{properties::RigidBody2D, vectors::Vector2D};
 
@@ -46,18 +46,15 @@ where
     T: PartialEq,
 {
     pub fn new(data: T) -> Self {
-        let mut rng = StdRng::seed_from_u64(0 as u64);
-        let x: f32 = rng.gen_range(-60.0..60.0);
-        let y: f32 = rng.gen_range(-60.0..60.0);
+        let mut rng = thread_rng();
+        let x: f32 = rng.gen_range(-10.0..10.0);
+        let y: f32 = rng.gen_range(-10.0..10.0);
         Self {
             data,
             rigidbody: Some(RigidBody2D::new(Vector2D::new([x, y]), 1.0)),
         }
     }
-    pub fn new_rb(data: T, seed: u64, rb: RigidBody2D) -> Self {
-        let mut rng = StdRng::seed_from_u64(seed);
-        let x: f32 = rng.gen_range(-60.0..60.0);
-        let y: f32 = rng.gen_range(-60.0..60.0);
+    pub fn new_rb(data: T, rb: RigidBody2D) -> Self {
         Self {
             data,
             rigidbody: Some(rb),
@@ -99,7 +96,7 @@ where
     }
 
     pub fn add_node_rb(&mut self, data: T, rb: RigidBody2D) -> DefaultIndex {
-        self.nodes.push(Node::new_rb(data, 0, rb));
+        self.nodes.push(Node::new_rb(data, rb));
         self.seed += 1;
         self.nodes.len() - 1
     }

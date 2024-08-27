@@ -1,6 +1,5 @@
 use core::f32;
 use std::{
-    f32::consts::{PI, TAU},
     fmt::Debug,
     marker::PhantomData,
     sync::{Arc, Mutex, RwLock},
@@ -11,7 +10,7 @@ use std::{
 use crate::{graph::Graph, simgraph::SimGraph, vectors::Vector3D};
 use camera::Camera;
 use cgmath::Deg;
-use glium::{glutin::surface::WindowSurface, implement_vertex, uniform, Display, Frame, Surface};
+use glium::{glutin::surface::WindowSurface, uniform, Display, Frame, Surface};
 
 use winit::{
     event::{Event, WindowEvent},
@@ -24,13 +23,6 @@ mod draw;
 mod shapes;
 
 const SCROLL_SENSITIVITY: f32 = 2.0;
-
-#[derive(Copy, Clone, Debug)]
-struct Vertex {
-    position: [f32; 3],
-    color: [f32; 4],
-}
-implement_vertex!(Vertex, position, color);
 
 pub struct DataVis<T>
 where
@@ -71,7 +63,7 @@ where
         let mut last_redraw = Instant::now();
         let mut last_pause = Instant::now();
         // Camera
-        let mut camera = Camera::new(Vector3D::new([0.0, 0.0, 50.0]));
+        let mut camera: Camera = Camera::new(Vector3D::new([0.0, 0.0, 2.0]));
         camera.look_at(&Vector3D::new([0.0, 0.0, 0.0]));
         let mut cursor = winit::dpi::PhysicalPosition::new(0.0, 0.0);
 
@@ -191,14 +183,8 @@ where
             &uniforms,
             &params,
         );
-        draw::draw_node(
-            Arc::clone(&graph),
-            &mut target,
-            display,
-            &max_mass,
-            &uniforms,
-            &params,
-        );
+        draw::draw_node(Arc::clone(&graph), &mut target, display, &uniforms, &params);
+
         if enable_quadtree {
             draw::draw_quadtree(Arc::clone(&graph), &mut target, display, &uniforms, &params);
         }

@@ -45,7 +45,7 @@ where
             spring_stiffness: 100.0,
             spring_default_len: 2.0,
             gravity_force: 1.0,
-            delta_time: 0.005,
+            delta_time: 0.01,
             damping: 0.9,
             phantom: std::marker::PhantomData,
             quadtree_theta: 0.25,

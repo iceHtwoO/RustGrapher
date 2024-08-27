@@ -35,6 +35,9 @@ fn main() {
     let mut g = Graph::<Data>::new(0);
     graph_wiki(&mut g);
 
+    //let mut g = Graph::<u32>::new(0);
+    //g.add_node_rb(1, RigidBody2D::new(Vector2D::new([0.0, 0.0]), 1.0));
+
     g.change_mass_based_on_incoming();
     let datavis = DataVis::new();
     datavis.create_window(g);
