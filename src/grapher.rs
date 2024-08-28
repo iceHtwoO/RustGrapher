@@ -7,7 +7,7 @@ use std::{
     time::Instant,
 };
 
-use crate::{graph::Graph, simgraph::SimGraph, vectors::Vector3D};
+use crate::{graph::Graph, simulator::Simulator, vectors::Vector3D};
 use camera::Camera;
 use cgmath::Deg;
 use glium::{glutin::surface::WindowSurface, uniform, Display, Frame, Surface};
@@ -24,21 +24,21 @@ mod shapes;
 
 const SCROLL_SENSITIVITY: f32 = 2.0;
 
-pub struct DataVis<T>
+pub struct Grapher<T>
 where
     T: PartialEq + Send + Sync + 'static + Clone,
 {
-    sim: SimGraph<T>,
+    sim: Simulator<T>,
     phantom: PhantomData<T>,
 }
 
-impl<T> DataVis<T>
+impl<T> Grapher<T>
 where
     T: PartialEq + Send + Sync + 'static + Clone + Debug + Default,
 {
     pub fn new() -> Self {
         Self {
-            sim: SimGraph::new(),
+            sim: Simulator::new(),
             phantom: PhantomData,
         }
     }
@@ -194,7 +194,7 @@ where
 
     fn spawn_simulation_thread(
         toggle_sim: Arc<RwLock<bool>>,
-        mut sim: SimGraph<T>,
+        mut sim: Simulator<T>,
         graph: Arc<RwLock<Graph<T>>>,
     ) {
         thread::spawn(move || loop {

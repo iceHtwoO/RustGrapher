@@ -4,7 +4,7 @@ use criterion::{black_box, criterion_group, criterion_main, Criterion};
 use grapher::{
     graph::Graph,
     quadtree::{BoundingBox2D, QuadTree},
-    simgraph::SimGraph,
+    simulator::Simulator,
 };
 use rand::Rng;
 
@@ -25,7 +25,7 @@ fn simulation_all_enabled(c: &mut Criterion) {
         let mut g = Graph::new(0);
         setup(&mut g, i);
         let g_arc = Arc::new(RwLock::new(g));
-        let mut sim = SimGraph::new();
+        let mut sim = Simulator::new();
 
         group.bench_function(format!("{}", i), |b| {
             b.iter(|| sim.simulation_step(Arc::clone(&g_arc)));
@@ -41,7 +41,7 @@ fn simulation_repel(c: &mut Criterion) {
         setup(&mut g, i);
 
         let g_arc = Arc::new(RwLock::new(g));
-        let mut sim = SimGraph::new_config(true, false, false);
+        let mut sim = Simulator::new_config(true, false, false);
 
         group.bench_function(format!("{}", i), |b| {
             b.iter(|| sim.simulation_step(Arc::clone(&g_arc)));
@@ -56,7 +56,7 @@ fn simulation_spring(c: &mut Criterion) {
         let mut g = Graph::new(0);
         setup(&mut g, i);
         let g_arc = Arc::new(RwLock::new(g));
-        let mut sim = SimGraph::new_config(false, true, false);
+        let mut sim = Simulator::new_config(false, true, false);
 
         group.bench_function(format!("{}", i), |b| {
             b.iter(|| sim.simulation_step(Arc::clone(&g_arc)));
@@ -71,7 +71,7 @@ fn simulation_gravity(c: &mut Criterion) {
         let mut g = Graph::new(0);
         setup(&mut g, i);
         let g_arc = Arc::new(RwLock::new(g));
-        let mut sim = SimGraph::new_config(false, false, true);
+        let mut sim = Simulator::new_config(false, false, true);
 
         group.bench_function(format!("{}", i), |b| {
             b.iter(|| sim.simulation_step(Arc::clone(&g_arc)));

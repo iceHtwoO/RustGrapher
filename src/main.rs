@@ -1,8 +1,8 @@
 extern crate glium;
 extern crate winit;
 
-use grapher::datavis::DataVis;
 use grapher::graph::Graph;
+use grapher::grapher::Grapher;
 use serde::Deserialize;
 use std::fs::File;
 use std::io::BufReader;
@@ -39,7 +39,7 @@ fn main() {
     //g.add_node_rb(1, RigidBody2D::new(Vector2D::new([0.0, 0.0]), 1.0));
 
     g.change_mass_based_on_incoming();
-    let datavis = DataVis::new();
+    let datavis = Grapher::new();
     datavis.create_window(g);
 }
 

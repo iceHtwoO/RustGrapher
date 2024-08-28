@@ -26,18 +26,6 @@ impl Camera {
         self.up = self.direction.cross(&self.right);
     }
 
-    pub fn rotate(&mut self, pivot: Vector2D, rad: f32) {
-        let s = rad.sin();
-        let c = rad.cos();
-        self.position[0] -= pivot[0];
-        self.position[2] -= pivot[1];
-
-        let xnew = self.position[0] * c - self.position[2] * s;
-        let znew = self.position[0] * s + self.position[2] * c;
-
-        self.position = Vector3D::new([xnew + pivot[0], self.position[1], znew + pivot[1]])
-    }
-
     pub fn matrix(&self) -> [[f32; 4]; 4] {
         let d = self.direction;
         let r = self.right;
@@ -52,25 +40,6 @@ impl Camera {
             [r[1], u[1], d[1], 0.0],
             [r[2], u[2], d[2], 0.0],
             [px, py, pz, 1.0],
-        ]
-    }
-
-    //TODO: FIX
-    pub fn ortho(l: f32, r: f32, t: f32, b: f32, f: f32, n: f32) -> [[f32; 4]; 4] {
-        [
-            [2.0 / (r - l), 0.0, 0.0, -((r + l) / (r - l))],
-            [0.0, 2.0 / (t - b), 0.0, -((t + b) / (t - b))],
-            [0.0, 0.0, 1.0, 0.0],
-            [0.0, 0.0, 0.0, 1.0f32],
-        ]
-    }
-
-    pub fn matrix_2(&self) -> [[f32; 4]; 4] {
-        [
-            [1.0, 0.0, 0.0, 0.0],
-            [0.0, 1.0, 0.0, 0.0],
-            [0.0, 0.0, 1.0, 0.0],
-            [0.0, 0.0, 0.0, 1.0f32],
         ]
     }
 }

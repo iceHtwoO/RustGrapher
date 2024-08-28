@@ -1,6 +1,6 @@
-pub mod datavis;
 pub mod graph;
+pub mod grapher;
 pub mod properties;
 pub mod quadtree;
-pub mod simgraph;
+pub mod simulator;
 pub mod vectors;

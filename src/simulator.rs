@@ -15,7 +15,7 @@ use crate::{
 };
 
 #[derive(Clone, Debug)]
-pub struct SimGraph<T>
+pub struct Simulator<T>
 where
     T: PartialEq + Send + Sync + 'static + Clone,
 {
@@ -32,7 +32,7 @@ where
     quadtree_theta: f32,
 }
 
-impl<T> SimGraph<T>
+impl<T> Simulator<T>
 where
     T: PartialEq + Send + Sync + 'static + Clone,
 {
