@@ -130,7 +130,8 @@ impl<'a, T> QuadTree<'a, T> {
             let center_mass = parent.position / parent.mass;
             let dist = center_mass.distance(*position);
 
-            if s / dist < theta || parent.is_leaf() {
+            // We check if dist ist bigger than EPSILON, so we don't add interactions with itself!
+            if (s / dist < theta || parent.is_leaf()) && dist > EPSILON {
                 nodes.push(parent);
             } else {
                 for child in parent.children.iter() {
