@@ -136,10 +136,12 @@ where
         None
     }
 
+    /// Get an edge iterator
     pub fn get_edge_iter(&self) -> Iter<'_, Edge> {
         self.edges.iter()
     }
 
+    /// Get the count of incoming edges
     pub fn get_incoming_count(&self, i: DefaultIndex) -> u32 {
         match self.graph_type {
             GraphType::Directed => {
@@ -166,6 +168,7 @@ where
         }
     }
 
+    /// Updates the mass of all nodes based on incoming edges
     pub fn change_mass_based_on_incoming(&mut self) {
         let mut count = Vec::with_capacity(self.get_node_count());
         for (i, _) in self.get_node_iter().enumerate() {
@@ -178,16 +181,15 @@ where
         }
     }
 
-    pub fn avg_pos(&self) -> [f32; 2] {
-        let mut avg_pos = [0.0, 0.0];
+    /// Calculates the average position of all nodes
+    pub fn avg_pos(&self) -> Vec2 {
+        let mut avg_pos = Vec2::ZERO;
         for n in self.get_node_iter() {
             let rb = n.rigidbody.as_ref().unwrap();
-            avg_pos[0] += rb.position[0];
-            avg_pos[1] += rb.position[1];
+            avg_pos += rb.position;
         }
 
-        avg_pos[0] /= self.get_node_count() as f32;
-        avg_pos[1] /= self.get_node_count() as f32;
+        avg_pos /= self.get_node_count() as f32;
 
         avg_pos
     }

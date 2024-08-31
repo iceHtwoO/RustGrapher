@@ -46,7 +46,7 @@ where
             delta_time: 0.005,
             damping: 0.9,
             phantom: std::marker::PhantomData,
-            quadtree_theta: 0.25,
+            quadtree_theta: 0.75,
         }
     }
 }
@@ -168,8 +168,8 @@ where
                     // Calculate Repel Force
                     for node_approximation in node_approximations {
                         let node_approximation_particle = RigidBody2D::new(
-                            node_approximation.get_position_ref(),
-                            node_approximation.mass,
+                            node_approximation.get_position(),
+                            node_approximation.get_mass(),
                         );
                         let repel_force =
                             Self::repel_force(repel_force_const, n1, &node_approximation_particle);

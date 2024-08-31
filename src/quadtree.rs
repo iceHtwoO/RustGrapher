@@ -3,16 +3,20 @@ use core::panic;
 use glam::Vec2;
 
 const EPSILON: f32 = 1e-3;
-#[derive(Debug)]
+
+/// Implementation of a quadtree for the barnes-hut algorithm.
+/// An area gets split up into 4 sections and each can contain a leaf or another quadtree
+/// This can be used to approximate far away nodes to reduce calculations.#[derive(Debug)]
 pub struct QuadTree<'a, T> {
     pub data: Option<&'a T>,
     pub children: Vec<Option<Self>>,
     pub boundary: BoundingBox2D,
-    pub mass: f32,
+    mass: f32,
     position: Vec2,
 }
 
 impl<'a, T> QuadTree<'a, T> {
+    /// Creates a empty `QuadTree` with it's initial `BoundingBox2D`
     pub fn new(boundary: BoundingBox2D) -> Self {
         Self {
             data: None,
@@ -23,20 +27,18 @@ impl<'a, T> QuadTree<'a, T> {
         }
     }
 
-    fn new_leaf(data: Option<&'a T>, position: Vec2, mass: f32, boundary: BoundingBox2D) -> Self {
-        Self {
-            data,
-            children: vec![None, None, None, None],
-            boundary,
-            mass,
-            position,
-        }
-    }
-
-    pub fn get_position_ref(&self) -> Vec2 {
+    /// Returns the position of the node.
+    /// If its an approximation its the average based on `mass`
+    pub fn get_position(&self) -> Vec2 {
         self.position / self.mass
     }
 
+    /// Returns the mass of the node
+    pub fn get_mass(&self) -> f32 {
+        self.mass
+    }
+
+    /// Inserts a node into the Quadtree and places it according to its relative position in the initial boundingBox
     pub fn insert(&mut self, data: Option<&'a T>, position: Vec2, mass: f32) {
         let mut parent: &mut Self = self;
 
@@ -63,6 +65,8 @@ impl<'a, T> QuadTree<'a, T> {
 
         let mut quadrant = parent.boundary.get_section(&position);
         let mut new_bb = parent.boundary.get_sub_quadrant(quadrant);
+
+        // If the lowest member is a Leaf we create a new leaf and move the data down
         if parent.is_leaf() {
             let leaf_position = parent.position;
             let leaf_mass = parent.mass;
@@ -82,7 +86,7 @@ impl<'a, T> QuadTree<'a, T> {
                 {
                     return;
                 }
-
+                // Create a new Quadrant and set it to parent
                 parent.children[leaf_quadrant as usize] = Some(QuadTree::new_leaf(
                     None,
                     leaf_position,
@@ -91,6 +95,7 @@ impl<'a, T> QuadTree<'a, T> {
                 ));
                 parent = parent.children[leaf_quadrant as usize].as_mut().unwrap();
 
+                // Recalculate the position in the quadrant where the new and old data wil be placed.
                 quadrant = parent.boundary.get_section(&position);
                 new_bb = parent.boundary.get_sub_quadrant(quadrant);
 
@@ -109,20 +114,10 @@ impl<'a, T> QuadTree<'a, T> {
             Some(Self::new_leaf(data, position * mass, mass, new_bb));
     }
 
-    fn update_mass(&mut self, position: &Vec2, mass: &f32) {
-        self.position += position * mass;
-        self.mass += mass;
-    }
-
-    fn is_leaf(&self) -> bool {
-        for child in self.children.iter() {
-            if child.is_some() {
-                return false;
-            }
-        }
-        true
-    }
-
+    /// Returns a Vector filled with `QuadTree` according to the barnes-hut algorithm
+    /// Far away nodes get approximated
+    /// Higher `theta` values result in more approximations.
+    /// If `theta` is 0, all nodes are returned without summarizing.
     pub fn get_stack(&'a self, position: &Vec2, theta: f32) -> Vec<&'a Self> {
         let mut nodes: Vec<&QuadTree<T>> = vec![];
         let mut stack = vec![self];
@@ -149,6 +144,7 @@ impl<'a, T> QuadTree<'a, T> {
         nodes
     }
 
+    /// Returns the node that is closest to given position
     pub fn get_closest(&'a self, position: &Vec2) -> &'a Self {
         let mut parent: &Self = self;
         let mut quadrant = parent.boundary.get_section(position);
@@ -157,6 +153,30 @@ impl<'a, T> QuadTree<'a, T> {
             quadrant = parent.boundary.get_section(position);
         }
         parent
+    }
+
+    fn update_mass(&mut self, position: &Vec2, mass: &f32) {
+        self.position += position * mass;
+        self.mass += mass;
+    }
+
+    fn is_leaf(&self) -> bool {
+        for child in self.children.iter() {
+            if child.is_some() {
+                return false;
+            }
+        }
+        true
+    }
+
+    fn new_leaf(data: Option<&'a T>, position: Vec2, mass: f32, boundary: BoundingBox2D) -> Self {
+        Self {
+            data,
+            children: vec![None, None, None, None],
+            boundary,
+            mass,
+            position,
+        }
     }
 }
 
