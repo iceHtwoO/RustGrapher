@@ -5,9 +5,9 @@ use std::{
 };
 
 use glam::Vec2;
+use petgraph::graph::Edge;
 
 use crate::{
-    graph::Graph,
     properties::RigidBody2D,
     quadtree::{BoundingBox2D, QuadTree},
 };
@@ -87,23 +87,33 @@ where
         }
     }
 
-    pub fn simulation_step(&mut self, graph: Arc<RwLock<Graph<T>>>) {
-        let f_vec = Arc::new(Mutex::new(vec![
-            Vec2::ZERO;
-            graph.read().unwrap().get_node_count()
-        ]));
+    pub fn simulation_step<E, Ix>(
+        &mut self,
+        rb_arc: Arc<RwLock<Vec<RigidBody2D>>>,
+        edge_arc: Arc<RwLock<Vec<Edge<E, Ix>>>>,
+    ) {
+        let f_vec = Arc::new(Mutex::new(vec![Vec2::ZERO; rb_arc.read().unwrap().len()]));
 
-        self.calculate_forces(Arc::clone(&graph), Arc::clone(&f_vec));
+        self.calculate_forces(
+            Arc::clone(&rb_arc),
+            Arc::clone(&edge_arc),
+            Arc::clone(&f_vec),
+        );
 
-        self.apply_node_force(Arc::clone(&graph), Arc::clone(&f_vec));
-        self.update_node_position(Arc::clone(&graph));
+        self.apply_node_force(Arc::clone(&rb_arc), Arc::clone(&f_vec));
+        self.update_node_position(Arc::clone(&rb_arc));
     }
 
-    fn calculate_forces(&mut self, g: Arc<RwLock<Graph<T>>>, f_vec: Arc<Mutex<Vec<Vec2>>>) {
+    fn calculate_forces<E, Ix>(
+        &mut self,
+        rb_arc: Arc<RwLock<Vec<RigidBody2D>>>,
+        edge_arc: Arc<RwLock<Vec<Edge<E, Ix>>>>,
+        f_vec: Arc<Mutex<Vec<Vec2>>>,
+    ) {
         if self.repel_force || self.gravity {
             let mut handles = vec![];
 
-            let node_count = { g.read().unwrap().get_node_count() };
+            let node_count = { rb_arc.read().unwrap().len() };
             let thread_count = usize::min(node_count, 16);
             let nodes_per_thread = node_count / thread_count;
 
@@ -119,14 +129,18 @@ where
                     (thread + 1) * nodes_per_thread + extra,
                     node_count,
                     Arc::clone(&f_vec),
-                    Arc::clone(&g),
+                    Arc::clone(&rb_arc),
                 );
 
                 handles.push(handle);
             }
 
             if self.spring {
-                self.add_graph_spring_forces(Arc::clone(&g), Arc::clone(&f_vec));
+                self.add_graph_spring_forces(
+                    Arc::clone(&rb_arc),
+                    Arc::clone(&edge_arc),
+                    Arc::clone(&f_vec),
+                );
             }
 
             for handle in handles {
@@ -140,30 +154,26 @@ where
         start_index: usize,
         end_index: usize,
         node_count: usize,
-        vec_arc: Arc<Mutex<Vec<Vec2>>>,
-        graph: Arc<RwLock<Graph<T>>>,
+        force_vec_out: Arc<Mutex<Vec<Vec2>>>,
+        rb_vec: Arc<RwLock<Vec<RigidBody2D>>>,
     ) -> JoinHandle<()> {
         let repel_force_const = self.repel_force_const;
         let repel_force = self.repel_force;
         let gravity = self.gravity;
         let gravity_force = self.gravity_force;
-        let quadtree = Self::build_quadtree(Arc::clone(&graph));
+        let quadtree = Self::build_quadtree(Arc::clone(&rb_vec));
         let theta = self.quadtree_theta;
 
         let handle = thread::spawn(move || {
             let mut force_vec: Vec<Vec2> = vec![Vec2::ZERO; node_count];
-            let graph_read_guard = graph.read().unwrap();
+            let graph_read_guard = rb_vec.read().unwrap();
 
             #[allow(clippy::needless_range_loop)]
             for i in start_index..end_index {
-                let n1 = graph_read_guard
-                    .get_node_by_index(i)
-                    .rigidbody
-                    .as_ref()
-                    .unwrap();
+                let rb = &rb_vec.read().unwrap()[i];
                 if repel_force {
                     // Get node approximation from Quadtree
-                    let node_approximations = quadtree.get_stack(&n1.position, theta);
+                    let node_approximations = quadtree.get_stack(&rb.position, theta);
 
                     // Calculate Repel Force
                     for node_approximation in node_approximations {
@@ -172,7 +182,7 @@ where
                             node_approximation.get_mass(),
                         );
                         let repel_force =
-                            Self::repel_force(repel_force_const, n1, &node_approximation_particle);
+                            Self::repel_force(repel_force_const, rb, &node_approximation_particle);
 
                         force_vec[i] += repel_force;
                     }
@@ -180,13 +190,13 @@ where
 
                 //Calculate Gravity Force
                 if gravity {
-                    let gravity_force = Self::compute_center_gravity(gravity_force, n1);
+                    let gravity_force = Self::compute_center_gravity(gravity_force, rb);
                     force_vec[i] += gravity_force;
                 }
             }
 
             {
-                let mut force_list = vec_arc.lock().unwrap();
+                let mut force_list = force_vec_out.lock().unwrap();
 
                 for (i, force) in force_vec.into_iter().enumerate() {
                     force_list[i] += force;
@@ -197,16 +207,15 @@ where
         handle
     }
 
-    fn build_quadtree(graph: Arc<RwLock<Graph<T>>>) -> QuadTree<'static, u32> {
-        let graph_read_guard = graph.read().unwrap();
+    fn build_quadtree(rb_vec_arc: Arc<RwLock<Vec<RigidBody2D>>>) -> QuadTree<'static, u32> {
+        let rb_vec_guard = rb_vec_arc.read().unwrap();
 
         let mut max_x = -f32::INFINITY;
         let mut min_x = f32::INFINITY;
         let mut max_y = -f32::INFINITY;
         let mut min_y = f32::INFINITY;
 
-        for node in graph_read_guard.get_node_iter() {
-            let rb: &RigidBody2D = node.rigidbody.as_ref().unwrap();
+        for rb in rb_vec_guard.iter() {
             max_x = max_x.max(rb.position[0]);
             max_y = max_y.max(rb.position[1]);
             min_x = min_x.min(rb.position[0]);
@@ -218,19 +227,21 @@ where
         let boundary = BoundingBox2D::new(Vec2::new(min_x + 0.5 * w, min_y + 0.5 * h), w, h);
         let mut quadtree = QuadTree::new(boundary.clone());
 
-        for n in graph_read_guard.get_node_iter() {
-            let rb: &RigidBody2D = n.rigidbody.as_ref().unwrap();
+        for rb in rb_vec_guard.iter() {
             quadtree.insert(None, rb.position, rb.mass);
         }
         quadtree
     }
 
-    fn apply_node_force(&self, graph: Arc<RwLock<Graph<T>>>, force_vec_arc: Arc<Mutex<Vec<Vec2>>>) {
+    fn apply_node_force(
+        &self,
+        graph: Arc<RwLock<Vec<RigidBody2D>>>,
+        force_vec_arc: Arc<Mutex<Vec<Vec2>>>,
+    ) {
         let mut graph_write_guard = graph.write().unwrap();
         let force_vec = force_vec_arc.lock().unwrap();
-        for (i, n) in graph_write_guard.get_node_mut_iter().enumerate() {
+        for (i, rb) in graph_write_guard.iter_mut().enumerate() {
             let node_force = force_vec[i];
-            let rb = n.rigidbody.as_mut().unwrap();
 
             rb.velocity[0] +=
                 force_vec[i][0].signum() * (node_force[0] / rb.mass).abs() * self.delta_time;
@@ -239,11 +250,10 @@ where
         }
     }
 
-    fn update_node_position(&self, graph: Arc<RwLock<Graph<T>>>) {
+    fn update_node_position(&self, graph: Arc<RwLock<Vec<RigidBody2D>>>) {
         let mut graph_write_guard = graph.write().unwrap();
 
-        'damping: for n in graph_write_guard.get_node_mut_iter() {
-            let rb = n.rigidbody.as_mut().unwrap();
+        'damping: for rb in graph_write_guard.iter_mut() {
             if rb.fixed {
                 rb.velocity[0] = 0.0;
                 rb.velocity[1] = 0.0;
@@ -256,21 +266,22 @@ where
         }
     }
 
-    fn add_graph_spring_forces(
+    fn add_graph_spring_forces<E, Ix>(
         &self,
-        graph: Arc<RwLock<Graph<T>>>,
+        rb_vec: Arc<RwLock<Vec<RigidBody2D>>>,
+        edge_vec: Arc<RwLock<Vec<Edge<E, IndexType>>>>,
         force_vec_arc: Arc<Mutex<Vec<Vec2>>>,
     ) {
         let mut force_vec = force_vec_arc.lock().unwrap();
-        let graph_arc = Arc::clone(&graph);
+        let rb_arc = Arc::clone(&rb_vec);
 
-        for edge in graph_arc.read().unwrap().get_edge_iter() {
-            let g = graph_arc.read().unwrap();
+        for edge in edge_vec.read().unwrap().iter() {
+            let g = rb_vec.read().unwrap();
 
-            let n1 = g.get_node_by_index(edge.0).rigidbody.as_ref().unwrap();
-            let n2 = g.get_node_by_index(edge.1).rigidbody.as_ref().unwrap();
+            let rb1 = &g[edge.];
+            let rb2 = &g[edge.1];
 
-            let spring_force: Vec2 = self.compute_spring_force(n1, n2);
+            let spring_force: Vec2 = self.compute_spring_force(rb1, rb2);
 
             force_vec[edge.0] -= spring_force;
             force_vec[edge.1] += spring_force;

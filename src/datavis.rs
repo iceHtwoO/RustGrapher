@@ -215,6 +215,7 @@ where
         mut sim: SimGraph<T>,
         graph: Arc<RwLock<Graph<T>>>,
     ) {
+        graph.read().unwrap()
         thread::spawn(move || loop {
             let toggle_sim_read_guard = toggle_sim.read().unwrap();
             let sim_toggle = *toggle_sim_read_guard;

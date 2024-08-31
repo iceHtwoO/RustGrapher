@@ -2,7 +2,7 @@ extern crate glium;
 extern crate winit;
 
 use grapher::datavis::DataVis;
-use grapher::graph::Graph;
+use petgraph::Graph;
 use serde::Deserialize;
 use std::fs::File;
 use std::io::BufReader;
@@ -32,7 +32,7 @@ impl PartialEq for Data {
 }
 
 fn main() {
-    let mut g = Graph::<Data>::new(0);
+    let mut g = Graph::new();
 
     graph_wiki(&mut g);
     //let mut g = Graph::<u32>::new(0);
@@ -43,7 +43,7 @@ fn main() {
     datavis.create_window(g);
 }
 
-fn graph_wiki(g: &mut Graph<Data>) {
+fn graph_wiki<N, E, Ty, Ix>(g: &mut Graph<N, E, Ty, Ix>) {
     if let Ok(w) = load_wiki() {
         for e in w {
             println!("Node Count:{}", g.get_node_count());
