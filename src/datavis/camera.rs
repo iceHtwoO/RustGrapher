@@ -18,10 +18,7 @@ impl Camera {
     }
 
     pub fn look_at(&mut self, look_at: &Vec3) {
-        self.direction = self.position.clone();
-        self.direction -= *look_at;
-        self.direction = self.direction.normalize();
-
+        self.direction = (self.position - look_at).normalize();
         self.right = Vec3::new(0.0, 1.0, 0.0).cross(self.direction);
         self.up = self.direction.cross(self.right);
     }

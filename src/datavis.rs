@@ -2,6 +2,7 @@ use core::f32;
 use std::{
     fmt::Debug,
     marker::PhantomData,
+    rc::Rc,
     sync::{Arc, Mutex, RwLock},
     thread,
     time::Instant,
@@ -82,7 +83,7 @@ where
         let sim = self.sim.clone();
 
         let self_arc = Arc::new(Mutex::new(self));
-        let display_arc = Arc::new(display);
+        let display_rc = Rc::new(display);
         let graph = Arc::new(RwLock::new(graph));
 
         Self::spawn_simulation_thread(Arc::clone(&toggle_sim), sim, Arc::clone(&graph));
@@ -90,11 +91,14 @@ where
         event_loop.run(move |event, _, control_flow| {
             *control_flow = ControlFlow::Poll;
 
+            #[allow(clippy::single_match)]
+            #[allow(clippy::collapsible_match)]
             match event {
                 Event::WindowEvent { event, .. } => match event {
                     WindowEvent::CloseRequested | WindowEvent::Destroyed => {
                         *control_flow = ControlFlow::Exit;
                     }
+
                     WindowEvent::MouseWheel { delta, .. } => match delta {
                         winit::event::MouseScrollDelta::LineDelta(_, y) => {
                             if y < 0.0 {
@@ -152,7 +156,7 @@ where
                     camera.position[1] -= camera_factor;
                 }
 
-                self_mutex.draw_graph(&display_arc, Arc::clone(&graph), &camera, toggle_quadtree);
+                self_mutex.draw_graph(&display_rc, Arc::clone(&graph), &camera, toggle_quadtree);
             }
         });
     }

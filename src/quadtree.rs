@@ -1,3 +1,5 @@
+use core::panic;
+
 use glam::Vec2;
 
 const EPSILON: f32 = 1e-3;
@@ -15,7 +17,7 @@ impl<'a, T> QuadTree<'a, T> {
         Self {
             data: None,
             children: vec![None, None, None, None],
-            boundary: boundary,
+            boundary,
             mass: 0.0,
             position: Vec2::ZERO,
         }
@@ -37,6 +39,10 @@ impl<'a, T> QuadTree<'a, T> {
 
     pub fn insert(&mut self, data: Option<&'a T>, position: Vec2, mass: f32) {
         let mut parent: &mut Self = self;
+
+        if mass == 0.0 {
+            panic!("Mass in QuadTree may not be 0");
+        }
 
         if parent.mass == 0.0 {
             parent.mass = mass;
@@ -114,7 +120,7 @@ impl<'a, T> QuadTree<'a, T> {
                 return false;
             }
         }
-        return true;
+        true
     }
 
     pub fn get_stack(&'a self, position: &Vec2, theta: f32) -> Vec<&'a Self> {
@@ -184,21 +190,20 @@ impl BoundingBox2D {
     }
 
     pub fn get_sub_quadrant(&self, section: u8) -> Self {
-        let mut shifted_x = self.center[0];
-        let mut shifted_y = self.center[1];
+        let mut shift = self.center;
         if section & 0b01 > 0 {
-            shifted_x += 0.25 * self.width;
+            shift[0] += 0.25 * self.width;
         } else {
-            shifted_x -= 0.25 * self.width;
+            shift[0] -= 0.25 * self.width;
         }
 
         if section & 0b10 > 0 {
-            shifted_y += 0.25 * self.height;
+            shift[1] += 0.25 * self.height;
         } else {
-            shifted_y -= 0.25 * self.height;
+            shift[1] -= 0.25 * self.height;
         }
         Self {
-            center: Vec2::new(shifted_x, shifted_y),
+            center: shift,
             width: self.width * 0.5,
             height: self.height * 0.5,
         }

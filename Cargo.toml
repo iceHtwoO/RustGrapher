@@ -24,3 +24,7 @@ rustflags = ["-Clink-arg=-fuse-ld=lld", "-Clink-arg=-Wl,--no-rosegment"]
 
 [profile.release]
 debug = true
+
+[lints.clippy]
+derivable_impls = "allow"
+new_without_default = "allow"

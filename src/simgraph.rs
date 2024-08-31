@@ -1,4 +1,3 @@
-use core::f32::INFINITY;
 use std::{
     fmt::Debug,
     sync::{Arc, Mutex, RwLock},
@@ -155,6 +154,7 @@ where
             let mut force_vec: Vec<Vec2> = vec![Vec2::ZERO; node_count];
             let graph_read_guard = graph.read().unwrap();
 
+            #[allow(clippy::needless_range_loop)]
             for i in start_index..end_index {
                 let n1 = graph_read_guard
                     .get_node_by_index(i)
@@ -172,7 +172,7 @@ where
                             node_approximation.mass,
                         );
                         let repel_force =
-                            Self::repel_force(repel_force_const, &n1, &node_approximation_particle);
+                            Self::repel_force(repel_force_const, n1, &node_approximation_particle);
 
                         force_vec[i] += repel_force;
                     }
@@ -180,7 +180,7 @@ where
 
                 //Calculate Gravity Force
                 if gravity {
-                    let gravity_force = Self::compute_center_gravity(gravity_force, &n1);
+                    let gravity_force = Self::compute_center_gravity(gravity_force, n1);
                     force_vec[i] += gravity_force;
                 }
             }

@@ -1,87 +1,13 @@
-use std::sync::{Arc, RwLock};
-
 use criterion::{black_box, criterion_group, criterion_main, Criterion};
 use glam::Vec2;
-use grapher::{
-    graph::Graph,
-    quadtree::{BoundingBox2D, QuadTree},
-    simgraph::SimGraph,
-};
+use grapher::quadtree::{BoundingBox2D, QuadTree};
 use rand::Rng;
 
-const NODE: [u32; 13] = [
-    1, 10, 50, 100, 250, 500, 750, 1000, 1250, 2500, 3250, 4000, 5000,
+const NODE: [u32; 14] = [
+    1, 10, 50, 100, 250, 500, 750, 1000, 1250, 2500, 3250, 4000, 5000, 30000,
 ];
-
-fn setup(g: &mut Graph<u32>, node_count: u32) {
-    for i in 0..node_count {
-        g.add_node(i);
-    }
-}
-
-fn simulation_all_enabled(c: &mut Criterion) {
-    let mut group = c.benchmark_group("Repel, Spring, Gravity");
-
-    for i in NODE {
-        let mut g = Graph::new(0);
-        setup(&mut g, i);
-        let g_arc = Arc::new(RwLock::new(g));
-        let mut sim = SimGraph::new();
-
-        group.bench_function(format!("{}", i), |b| {
-            b.iter(|| sim.simulation_step(Arc::clone(&g_arc)));
-        });
-    }
-}
-
-fn simulation_repel(c: &mut Criterion) {
-    let mut group = c.benchmark_group("Repel");
-
-    for i in NODE {
-        let mut g = Graph::new(0);
-        setup(&mut g, i);
-
-        let g_arc = Arc::new(RwLock::new(g));
-        let mut sim = SimGraph::new_config(true, false, false);
-
-        group.bench_function(format!("{}", i), |b| {
-            b.iter(|| sim.simulation_step(Arc::clone(&g_arc)));
-        });
-    }
-}
-
-fn simulation_spring(c: &mut Criterion) {
-    let mut group = c.benchmark_group("spring");
-
-    for i in NODE {
-        let mut g = Graph::new(0);
-        setup(&mut g, i);
-        let g_arc = Arc::new(RwLock::new(g));
-        let mut sim = SimGraph::new_config(false, true, false);
-
-        group.bench_function(format!("{}", i), |b| {
-            b.iter(|| sim.simulation_step(Arc::clone(&g_arc)));
-        });
-    }
-}
-
-fn simulation_gravity(c: &mut Criterion) {
-    let mut group = c.benchmark_group("gravity");
-
-    for i in NODE {
-        let mut g = Graph::new(0);
-        setup(&mut g, i);
-        let g_arc = Arc::new(RwLock::new(g));
-        let mut sim = SimGraph::new_config(false, false, true);
-
-        group.bench_function(format!("{}", i), |b| {
-            b.iter(|| sim.simulation_step(Arc::clone(&g_arc)));
-        });
-    }
-}
-
 fn quadtree_insert(c: &mut Criterion) {
-    let w = 30000.0;
+    let w = 1000.0;
     let bb = BoundingBox2D::new(Vec2::ZERO, w, w);
     let mut qt: QuadTree<u32> = QuadTree::new(bb.clone());
     let mut rng = rand::thread_rng();
@@ -93,14 +19,14 @@ fn quadtree_insert(c: &mut Criterion) {
                     rng.gen_range((-w / 2.0)..(w / 2.0)),
                     rng.gen_range((-w / 2.0)..(w / 2.0)),
                 )),
-                rng.gen_range(0.0..2000.0),
+                rng.gen_range(1.0..2000.0),
             )
         });
     });
 }
 
 fn quadtree_get_stack(c: &mut Criterion) {
-    let w = 30000.0;
+    let w = 1000.0;
     let bb = BoundingBox2D::new(Vec2::ZERO, w, w);
     let mut rng = rand::thread_rng();
     let mut group = c.benchmark_group("QuadTree get");
@@ -113,7 +39,7 @@ fn quadtree_get_stack(c: &mut Criterion) {
                     rng.gen_range((-w / 2.0)..(w / 2.0)),
                     rng.gen_range((-w / 2.0)..(w / 2.0)),
                 )),
-                rng.gen_range(0.0..2000.0),
+                rng.gen_range(1.0..2000.0),
             )
         }
         group.bench_function(format!("Nodes: {}", i), |b| {
@@ -130,13 +56,5 @@ fn quadtree_get_stack(c: &mut Criterion) {
     }
 }
 
-criterion_group!(
-    simulation,
-    simulation_all_enabled,
-    simulation_repel,
-    simulation_spring,
-    simulation_gravity,
-    quadtree_insert,
-    quadtree_get_stack
-);
+criterion_group!(simulation, quadtree_insert, quadtree_get_stack);
 criterion_main!(simulation);

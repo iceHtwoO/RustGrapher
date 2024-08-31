@@ -1,6 +1,6 @@
 use core::f32;
 use std::{
-    f32::{consts::PI, INFINITY},
+    f32::consts::PI,
     sync::{Arc, RwLock},
 };
 
@@ -79,10 +79,10 @@ pub fn draw_edge<T, H, R>(
 
         let min_m = n1.mass.min(n2.mass);
         let color = [
-            (min_m / max_m) as f32 * 10.0,
-            (min_m / max_m) as f32 * 6.0,
-            (min_m / max_m) as f32 * 6.0,
-            (min_m / max_m) as f32,
+            min_m / max_m * 10.0,
+            min_m / max_m * 6.0,
+            min_m / max_m * 6.0,
+            min_m / max_m,
         ];
 
         shape.append(&mut shapes::line(
@@ -128,7 +128,7 @@ pub fn draw_node<T, H, R>(
             (rand.gen_range(10..=100) as f32) / 100.0,
             (rand.gen_range(10..=100) as f32) / 100.0,
             (rand.gen_range(10..=100) as f32) / 100.0,
-            (rb.mass / max_m) as f32,
+            rb.mass / max_m,
         ];
 
         shape.append(&mut shapes::circle(pos, color, r, 10));
@@ -160,10 +160,10 @@ pub fn draw_quadtree<T, H, R>(
 
     let graph_read_guard = graph.read().unwrap();
 
-    let mut max_x = -INFINITY;
-    let mut min_x = INFINITY;
-    let mut max_y = -INFINITY;
-    let mut min_y = INFINITY;
+    let mut max_x = -f32::INFINITY;
+    let mut min_x = f32::INFINITY;
+    let mut max_y = -f32::INFINITY;
+    let mut min_y = f32::INFINITY;
 
     for node in graph_read_guard.get_node_iter() {
         let rb = node.rigidbody.as_ref().unwrap();
@@ -200,7 +200,7 @@ where
 {
     for child in quadtree.children.iter() {
         match child {
-            Some(c) => get_qt_vertex(&c, shape),
+            Some(c) => get_qt_vertex(c, shape),
             None => (),
         }
     }

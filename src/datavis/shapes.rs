@@ -4,80 +4,70 @@ use super::Vertex;
 
 #[allow(dead_code)]
 pub fn rectangle(pos: [f32; 3], color: [f32; 4], s: f32) -> Vec<Vertex> {
-    let mut shape = Vec::with_capacity(6);
-    shape.push(Vertex {
-        position: [pos[0] - s, pos[1] - s, pos[2]],
-        color,
-    });
-
-    shape.push(Vertex {
-        position: [pos[0] + s, pos[1] - s, pos[2]],
-        color,
-    });
-
-    shape.push(Vertex {
-        position: [pos[0] - s, pos[1] + s, pos[2]],
-        color,
-    });
-    shape.push(Vertex {
-        position: [pos[0] + s, pos[1] + s, pos[2]],
-        color,
-    });
-
-    shape.push(Vertex {
-        position: [pos[0] + s, pos[1] - s, pos[2]],
-        color,
-    });
-
-    shape.push(Vertex {
-        position: [pos[0] - s, pos[1] + s, pos[2]],
-        color,
-    });
-    shape
+    vec![
+        Vertex {
+            position: [pos[0] - s, pos[1] - s, pos[2]],
+            color,
+        },
+        Vertex {
+            position: [pos[0] + s, pos[1] - s, pos[2]],
+            color,
+        },
+        Vertex {
+            position: [pos[0] - s, pos[1] + s, pos[2]],
+            color,
+        },
+        Vertex {
+            position: [pos[0] + s, pos[1] + s, pos[2]],
+            color,
+        },
+        Vertex {
+            position: [pos[0] + s, pos[1] - s, pos[2]],
+            color,
+        },
+        Vertex {
+            position: [pos[0] - s, pos[1] + s, pos[2]],
+            color,
+        },
+    ]
 }
 
 #[allow(dead_code)]
 pub fn rectangle_lines(pos: [f32; 3], color: [f32; 4], x: f32, y: f32) -> Vec<Vertex> {
-    let mut shape = Vec::with_capacity(6);
-    shape.push(Vertex {
-        position: [pos[0] - x, pos[1] - y, pos[2]],
-        color,
-    });
-
-    shape.push(Vertex {
-        position: [pos[0] + x, pos[1] - y, pos[2]],
-        color,
-    });
-
-    shape.push(Vertex {
-        position: [pos[0] + x, pos[1] - y, pos[2]],
-        color,
-    });
-    shape.push(Vertex {
-        position: [pos[0] + x, pos[1] + y, pos[2]],
-        color,
-    });
-
-    shape.push(Vertex {
-        position: [pos[0] + x, pos[1] + y, pos[2]],
-        color,
-    });
-    shape.push(Vertex {
-        position: [pos[0] - x, pos[1] + y, pos[2]],
-        color,
-    });
-
-    shape.push(Vertex {
-        position: [pos[0] - x, pos[1] + y, pos[2]],
-        color,
-    });
-
-    shape.push(Vertex {
-        position: [pos[0] - x, pos[1] - y, pos[2]],
-        color,
-    });
-
-    shape
+    vec![
+        Vertex {
+            position: [pos[0] - x, pos[1] - y, pos[2]],
+            color,
+        },
+        Vertex {
+            position: [pos[0] + x, pos[1] - y, pos[2]],
+            color,
+        },
+        Vertex {
+            position: [pos[0] + x, pos[1] - y, pos[2]],
+            color,
+        },
+        Vertex {
+            position: [pos[0] + x, pos[1] + y, pos[2]],
+            color,
+        },
+        Vertex {
+            position: [pos[0] + x, pos[1] + y, pos[2]],
+            color,
+        },
+        Vertex {
+            position: [pos[0] - x, pos[1] + y, pos[2]],
+            color,
+        },
+        Vertex {
+            position: [pos[0] - x, pos[1] + y, pos[2]],
+            color,
+        },
+        Vertex {
+            position: [pos[0] - x, pos[1] - y, pos[2]],
+            color,
+        },
+    ]
 }
 
 pub fn circle(pos: [f32; 3], color: [f32; 4], r: f32, res: usize) -> Vec<Vertex> {
@@ -112,17 +102,14 @@ pub fn circle(pos: [f32; 3], color: [f32; 4], r: f32, res: usize) -> Vec<Vertex>
 }
 
 pub fn line(p1: [f32; 3], p2: [f32; 3], color: [f32; 4]) -> Vec<Vertex> {
-    let mut shape = Vec::with_capacity(2);
-
-    shape.push(Vertex {
-        position: p1,
-        color,
-    });
-
-    shape.push(Vertex {
-        position: p2,
-        color,
-    });
-
-    shape
+    vec![
+        Vertex {
+            position: p1,
+            color,
+        },
+        Vertex {
+            position: p2,
+            color,
+        },
+    ]
 }

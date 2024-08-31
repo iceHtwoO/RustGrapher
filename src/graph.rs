@@ -47,7 +47,7 @@ where
     T: PartialEq,
 {
     pub fn new(data: T) -> Self {
-        let mut rng = StdRng::seed_from_u64(0 as u64);
+        let mut rng = StdRng::seed_from_u64(0);
         let x: f32 = rng.gen_range(-60.0..60.0);
         let y: f32 = rng.gen_range(-60.0..60.0);
         Self {
@@ -133,7 +133,7 @@ where
                 return Some(i);
             }
         }
-        return None;
+        None
     }
 
     pub fn get_edge_iter(&self) -> Iter<'_, Edge> {
@@ -174,7 +174,7 @@ where
 
         for (i, node) in self.get_node_mut_iter().enumerate() {
             let rb = node.rigidbody.as_mut().unwrap();
-            rb.mass += count[i] as f32 * rb.mass as f32;
+            rb.mass += count[i] as f32 * rb.mass;
         }
     }
 
