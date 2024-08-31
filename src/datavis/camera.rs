@@ -1,63 +1,44 @@
-use crate::vectors::Vector3D;
+use glam::Vec3;
 
 pub struct Camera {
-    pub position: Vector3D,
-    pub direction: Vector3D,
-    pub right: Vector3D,
-    pub up: Vector3D,
+    pub position: Vec3,
+    pub direction: Vec3,
+    pub right: Vec3,
+    pub up: Vec3,
 }
 
 impl Camera {
-    pub fn new(position: Vector3D) -> Self {
+    pub fn new(position: Vec3) -> Self {
         Self {
             position,
-            direction: Vector3D::new([0.0, 0.0, 0.0]),
-            right: Vector3D::new([0.0, 0.0, 0.0]),
-            up: Vector3D::new([0.0, 0.0, 0.0]),
+            direction: Vec3::ZERO,
+            right: Vec3::ZERO,
+            up: Vec3::ZERO,
         }
     }
 
-    pub fn look_at(&mut self, look_at: &Vector3D) {
+    pub fn look_at(&mut self, look_at: &Vec3) {
         self.direction = self.position.clone();
         self.direction -= *look_at;
         self.direction = self.direction.normalize();
 
-        self.right = Vector3D::new([0.0, 1.0, 0.0]).cross(&self.direction);
-        self.up = self.direction.cross(&self.right);
+        self.right = Vec3::new(0.0, 1.0, 0.0).cross(self.direction);
+        self.up = self.direction.cross(self.right);
     }
 
     pub fn matrix(&self) -> [[f32; 4]; 4] {
         let d = self.direction;
         let r = self.right;
         let u = self.up;
-        let mut pp = self.position;
-        pp.scalar(-1.0);
-        let px = pp.dot(&r);
-        let py = pp.dot(&u);
-        let pz = pp.dot(&d);
+        let pp = self.position * -1.0;
+        let px = pp.dot(r);
+        let py = pp.dot(u);
+        let pz = pp.dot(d);
         [
             [r[0], u[0], d[0], 0.0],
             [r[1], u[1], d[1], 0.0],
             [r[2], u[2], d[2], 0.0],
             [px, py, pz, 1.0],
-        ]
-    }
-
-    pub fn ortho(l: f32, r: f32, t: f32, b: f32, f: f32, n: f32) -> [[f32; 4]; 4] {
-        [
-            [2.0 / (r - l), 0.0, 0.0, -((r + l) / (r - l))],
-            [0.0, 2.0 / (t - b), 0.0, -((t + b) / (t - b))],
-            [0.0, 0.0, 1.0, 0.0],
-            [0.0, 0.0, 0.0, 1.0f32],
-        ]
-    }
-
-    pub fn matrix_2(&self) -> [[f32; 4]; 4] {
-        [
-            [1.0, 0.0, 0.0, 0.0],
-            [0.0, 1.0, 0.0, 0.0],
-            [0.0, 0.0, 1.0, 0.0],
-            [0.0, 0.0, 0.0, 1.0f32],
         ]
     }
 }

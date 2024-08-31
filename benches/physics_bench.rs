@@ -1,6 +1,7 @@
 use std::sync::{Arc, RwLock};
 
 use criterion::{black_box, criterion_group, criterion_main, Criterion};
+use glam::Vec2;
 use grapher::{
     graph::Graph,
     quadtree::{BoundingBox2D, QuadTree},
@@ -80,18 +81,18 @@ fn simulation_gravity(c: &mut Criterion) {
 }
 
 fn quadtree_insert(c: &mut Criterion) {
-    let w = 1000.0;
-    let bb = BoundingBox2D::new([0.0, 0.0], w, w);
+    let w = 30000.0;
+    let bb = BoundingBox2D::new(Vec2::ZERO, w, w);
     let mut qt: QuadTree<u32> = QuadTree::new(bb.clone());
     let mut rng = rand::thread_rng();
     c.bench_function("Quadtree insert", |b| {
         b.iter(|| {
             qt.insert(
                 None,
-                black_box([
+                black_box(Vec2::new(
                     rng.gen_range((-w / 2.0)..(w / 2.0)),
                     rng.gen_range((-w / 2.0)..(w / 2.0)),
-                ]),
+                )),
                 rng.gen_range(0.0..2000.0),
             )
         });
@@ -99,29 +100,29 @@ fn quadtree_insert(c: &mut Criterion) {
 }
 
 fn quadtree_get_stack(c: &mut Criterion) {
-    let w = 1000.0;
-    let bb = BoundingBox2D::new([0.0, 0.0], w, w);
+    let w = 30000.0;
+    let bb = BoundingBox2D::new(Vec2::ZERO, w, w);
     let mut rng = rand::thread_rng();
     let mut group = c.benchmark_group("QuadTree get");
     for i in NODE {
         let mut qt: QuadTree<u32> = QuadTree::new(bb.clone());
-        for n in 0..i {
+        for _ in 0..i {
             qt.insert(
                 None,
-                black_box([
+                black_box(Vec2::new(
                     rng.gen_range((-w / 2.0)..(w / 2.0)),
                     rng.gen_range((-w / 2.0)..(w / 2.0)),
-                ]),
+                )),
                 rng.gen_range(0.0..2000.0),
             )
         }
         group.bench_function(format!("Nodes: {}", i), |b| {
             b.iter(|| {
                 qt.get_stack(
-                    black_box(&[
+                    black_box(&Vec2::new(
                         rng.gen_range((-w / 2.0)..(w / 2.0)),
                         rng.gen_range((-w / 2.0)..(w / 2.0)),
-                    ]),
+                    )),
                     0.75,
                 )
             });

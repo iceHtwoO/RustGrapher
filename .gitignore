@@ -3,6 +3,7 @@
 
 .vscode/*
 !.vscode/tasks.json
+!.vscode/settings.json
 !.vscode/launch.json
 
 perf.data.*

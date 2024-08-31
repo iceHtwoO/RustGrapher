@@ -8,6 +8,7 @@ use crate::{
     graph::{Graph, Node},
     quadtree::{BoundingBox2D, QuadTree},
 };
+use glam::Vec2;
 use glium::{
     glutin::surface::WindowSurface,
     uniforms::{AsUniformValue, Uniforms, UniformsStorage},
@@ -119,7 +120,7 @@ pub fn draw_node<T, H, R>(
 
     for (e, node) in graph_read_guard.get_node_iter().enumerate() {
         let rb = node.rigidbody.as_ref().unwrap();
-        let pos = [rb.position[0], rb.position[1], 0.0];
+        let pos = [rb.position[0], rb.position[1], -2.0];
         let r = f32::sqrt(rb.mass * PI) * 0.1;
 
         let mut rand = StdRng::seed_from_u64(e as u64);
@@ -174,13 +175,13 @@ pub fn draw_quadtree<T, H, R>(
 
     let w = max_x - min_x;
     let h = max_y - min_y;
-    let boundary = BoundingBox2D::new([min_x + 0.5 * w, min_y + 0.5 * h], w, h);
+    let boundary = BoundingBox2D::new(Vec2::new(min_x + 0.5 * w, min_y + 0.5 * h), w, h);
 
     let mut quadtree = QuadTree::new(boundary.clone());
 
     for node in graph_read_guard.get_node_iter() {
         let rb = node.rigidbody.as_ref().unwrap();
-        quadtree.insert(Some(node), rb.position.get_position(), rb.mass);
+        quadtree.insert(Some(node), rb.position, rb.mass);
     }
 
     get_qt_vertex(&quadtree, &mut shape);

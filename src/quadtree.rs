@@ -1,3 +1,5 @@
+use glam::Vec2;
+
 const EPSILON: f32 = 1e-3;
 #[derive(Debug)]
 pub struct QuadTree<'a, T> {
@@ -5,7 +7,7 @@ pub struct QuadTree<'a, T> {
     pub children: Vec<Option<Self>>,
     pub boundary: BoundingBox2D,
     pub mass: f32,
-    position: [f32; 2],
+    position: Vec2,
 }
 
 impl<'a, T> QuadTree<'a, T> {
@@ -15,16 +17,11 @@ impl<'a, T> QuadTree<'a, T> {
             children: vec![None, None, None, None],
             boundary: boundary,
             mass: 0.0,
-            position: [0.0, 0.0],
+            position: Vec2::ZERO,
         }
     }
 
-    fn new_leaf(
-        data: Option<&'a T>,
-        position: [f32; 2],
-        mass: f32,
-        boundary: BoundingBox2D,
-    ) -> Self {
+    fn new_leaf(data: Option<&'a T>, position: Vec2, mass: f32, boundary: BoundingBox2D) -> Self {
         Self {
             data,
             children: vec![None, None, None, None],
@@ -34,16 +31,16 @@ impl<'a, T> QuadTree<'a, T> {
         }
     }
 
-    pub fn get_position_ref(&self) -> [f32; 2] {
-        [self.position[0] / self.mass, self.position[1] / self.mass]
+    pub fn get_position_ref(&self) -> Vec2 {
+        self.position / self.mass
     }
 
-    pub fn insert(&mut self, data: Option<&'a T>, position: [f32; 2], mass: f32) {
+    pub fn insert(&mut self, data: Option<&'a T>, position: Vec2, mass: f32) {
         let mut parent: &mut Self = self;
 
         if parent.mass == 0.0 {
             parent.mass = mass;
-            parent.position = [position[0] * mass, position[1] * mass];
+            parent.position = position * mass;
             parent.data = data;
             return;
         }
@@ -64,7 +61,7 @@ impl<'a, T> QuadTree<'a, T> {
             let leaf_position = parent.position;
             let leaf_mass = parent.mass;
             let leaf_data = parent.data;
-            let l_pos = [leaf_position[0] / leaf_mass, leaf_position[1] / leaf_mass];
+            let l_pos = leaf_position / leaf_mass;
 
             //Update the mass of the parent
             parent.update_mass(&position, &mass);
@@ -102,17 +99,12 @@ impl<'a, T> QuadTree<'a, T> {
                 leaf_new_bb,
             ));
         }
-        parent.children[quadrant as usize] = Some(Self::new_leaf(
-            data,
-            [position[0] * mass, position[1] * mass],
-            mass,
-            new_bb,
-        ));
+        parent.children[quadrant as usize] =
+            Some(Self::new_leaf(data, position * mass, mass, new_bb));
     }
 
-    fn update_mass(&mut self, position: &[f32; 2], mass: &f32) {
-        self.position[0] += position[0] * mass;
-        self.position[1] += position[1] * mass;
+    fn update_mass(&mut self, position: &Vec2, mass: &f32) {
+        self.position += position * mass;
         self.mass += mass;
     }
 
@@ -125,7 +117,7 @@ impl<'a, T> QuadTree<'a, T> {
         return true;
     }
 
-    pub fn get_stack(&'a self, position: &[f32; 2], theta: f32) -> Vec<&'a Self> {
+    pub fn get_stack(&'a self, position: &Vec2, theta: f32) -> Vec<&'a Self> {
         let mut nodes: Vec<&QuadTree<T>> = vec![];
         let mut stack = vec![self];
         while !stack.is_empty() {
@@ -134,15 +126,10 @@ impl<'a, T> QuadTree<'a, T> {
                 None => break,
             };
             let s = parent.boundary.width.max(parent.boundary.height);
-            let center_mass = [
-                parent.position[0] / parent.mass,
-                parent.position[1] / parent.mass,
-            ];
-            let d = f32::sqrt(
-                (center_mass[0] - position[0]).powi(2) + (center_mass[1] - position[1]).powi(2),
-            );
+            let center_mass = parent.position / parent.mass;
+            let dist = center_mass.distance(*position);
 
-            if s / d < theta || parent.is_leaf() {
+            if s / dist < theta || parent.is_leaf() {
                 nodes.push(parent);
             } else {
                 for child in parent.children.iter() {
@@ -156,7 +143,7 @@ impl<'a, T> QuadTree<'a, T> {
         nodes
     }
 
-    pub fn get_closest(&'a self, position: &[f32; 2]) -> &'a Self {
+    pub fn get_closest(&'a self, position: &Vec2) -> &'a Self {
         let mut parent: &Self = self;
         let mut quadrant = parent.boundary.get_section(position);
         while parent.children[quadrant as usize].is_some() {
@@ -169,20 +156,20 @@ impl<'a, T> QuadTree<'a, T> {
 
 #[derive(Clone, Debug)]
 pub struct BoundingBox2D {
-    pub center: [f32; 2],
+    pub center: Vec2,
     pub width: f32,
     pub height: f32,
 }
 
 impl BoundingBox2D {
-    pub fn new(center: [f32; 2], width: f32, height: f32) -> Self {
+    pub fn new(center: Vec2, width: f32, height: f32) -> Self {
         Self {
             center,
             width,
             height,
         }
     }
-    fn get_section(&self, loc: &[f32; 2]) -> u8 {
+    fn get_section(&self, loc: &Vec2) -> u8 {
         let mut section = 0x00;
 
         if loc[1] > self.center[1] {
@@ -211,7 +198,7 @@ impl BoundingBox2D {
             shifted_y -= 0.25 * self.height;
         }
         Self {
-            center: [shifted_x, shifted_y],
+            center: Vec2::new(shifted_x, shifted_y),
             width: self.width * 0.5,
             height: self.height * 0.5,
         }

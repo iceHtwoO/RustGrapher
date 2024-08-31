@@ -3,9 +3,10 @@ use std::{
     vec,
 };
 
+use glam::Vec2;
 use rand::{rngs::StdRng, Rng, SeedableRng};
 
-use crate::{properties::RigidBody2D, vectors::Vector2D};
+use crate::properties::RigidBody2D;
 
 #[derive(Debug, Clone)]
 pub enum GraphType {
@@ -51,7 +52,7 @@ where
         let y: f32 = rng.gen_range(-60.0..60.0);
         Self {
             data,
-            rigidbody: Some(RigidBody2D::new(Vector2D::new([x, y]), 1.0)),
+            rigidbody: Some(RigidBody2D::new(Vec2::new(x, y), 1.0)),
         }
     }
     pub fn new_seeded(data: T, seed: u64) -> Self {
@@ -60,7 +61,7 @@ where
         let y: f32 = rng.gen_range(-60.0..60.0);
         Self {
             data,
-            rigidbody: Some(RigidBody2D::new(Vector2D::new([x, y]), 1.0)),
+            rigidbody: Some(RigidBody2D::new(Vec2::new(x, y), 1.0)),
         }
     }
 }

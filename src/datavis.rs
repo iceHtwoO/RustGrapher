@@ -7,9 +7,9 @@ use std::{
     time::Instant,
 };
 
-use crate::{graph::Graph, simgraph::SimGraph, vectors::Vector3D};
+use crate::{graph::Graph, simgraph::SimGraph};
 use camera::Camera;
-use cgmath::Deg;
+use glam::{Mat4, Vec3};
 use glium::{glutin::surface::WindowSurface, implement_vertex, uniform, Display, Frame, Surface};
 
 use winit::{
@@ -70,8 +70,9 @@ where
         let mut last_redraw = Instant::now();
         let mut last_pause = Instant::now();
         // Camera
-        let mut camera = Camera::new(Vector3D::new([0.0, 0.0, 5.0]));
-        camera.look_at(&Vector3D::new([0.0, 0.0, 0.0]));
+        let mut camera = Camera::new(Vec3::new(0.0, 0.0, 5.0));
+        camera.look_at(&Vec3::ZERO);
+
         let mut cursor = winit::dpi::PhysicalPosition::new(0.0, 0.0);
 
         //Config
@@ -170,7 +171,7 @@ where
 
         let uniforms = uniform! {
             matrix: camera.matrix(),
-            projection: build_perspective_matrix(&target)
+            projection: build_perspective_matrix(&target).to_cols_array_2d()
         };
 
         let params = glium::DrawParameters {
@@ -233,7 +234,7 @@ where
     }
 }
 
-fn build_perspective_matrix(target: &Frame) -> [[f32; 4]; 4] {
+fn build_perspective_matrix(target: &Frame) -> Mat4 {
     let (width, height) = target.get_dimensions();
-    cgmath::perspective(Deg(45.0f32), width as f32 / height as f32, 0.1, 1000.0).into()
+    Mat4::perspective_infinite_lh(0.8, width as f32 / height as f32, 0.1)
 }
