@@ -111,7 +111,7 @@ pub fn draw_node<H, R>(
     let graph_read_guard = rb_v.read().unwrap();
 
     for (e, rb) in graph_read_guard.iter().enumerate() {
-        let pos = [rb.position[0], rb.position[1], -2.0];
+        let pos = [rb.position[0], rb.position[1], -0.2];
         let r = f32::sqrt(rb.mass * PI) * 0.1;
 
         let mut rand = StdRng::seed_from_u64(e as u64);

@@ -16,7 +16,7 @@ use camera::Camera;
 use glam::{Mat4, Vec2, Vec3};
 use glium::{glutin::surface::WindowSurface, implement_vertex, uniform, Display, Frame, Surface};
 
-use petgraph::{csr::IndexType, Directed, EdgeType, Graph};
+use petgraph::{Directed, Graph};
 use rand::Rng;
 use winit::{
     event::{Event, WindowEvent},
@@ -37,26 +37,31 @@ struct Vertex {
 }
 implement_vertex!(Vertex, position, color);
 
-pub struct DataVis<T>
+pub struct DataVis<T, E>
 where
     T: PartialEq + Send + Sync + 'static + Clone,
 {
-    sim: SimGraph<T>,
+    sim: SimGraph,
     phantom: PhantomData<T>,
+    phantom2: PhantomData<E>,
+    mass_incoming: bool,
 }
 
-impl<T> DataVis<T>
+impl<T, E> DataVis<T, E>
 where
     T: PartialEq + Send + Sync + 'static + Clone + Debug + Default,
+    E: 'static,
 {
     pub fn new() -> Self {
         Self {
             sim: SimGraph::new(),
             phantom: PhantomData,
+            phantom2: PhantomData,
+            mass_incoming: true,
         }
     }
 
-    pub fn create_window<E>(self, g: Graph<f32, E, Directed, usize>) {
+    pub fn create_window(self, g: Graph<T, E, Directed, u32>) {
         let event_loop = winit::event_loop::EventLoopBuilder::new().build();
 
         let (window, display) =
@@ -65,9 +70,9 @@ where
         self.run_render_loop(g, event_loop, display, window);
     }
 
-    fn run_render_loop<E>(
+    fn run_render_loop(
         self,
-        graph: Graph<f32, E, Directed, usize>,
+        graph: Graph<T, E, Directed, u32>,
         event_loop: EventLoop<()>,
         display: Display<WindowSurface>,
         window: Window,
@@ -87,11 +92,12 @@ where
 
         let sim = self.sim.clone();
 
-        let self_arc = Arc::new(Mutex::new(self));
-        let display_rc = Rc::new(display);
-        let (rb_v, spring_v) = build_rb_vec(graph);
+        let (rb_v, spring_v) = self.build_rb_vec(graph);
         let rb_arc = Arc::new(RwLock::new(rb_v));
         let spring_arc = Arc::new(RwLock::new(spring_v));
+
+        let self_arc = Arc::new(Mutex::new(self));
+        let display_rc = Rc::new(display);
 
         Self::spawn_simulation_thread(
             Arc::clone(&toggle_sim),
@@ -232,7 +238,7 @@ where
 
     fn spawn_simulation_thread(
         toggle_sim: Arc<RwLock<bool>>,
-        mut sim: SimGraph<T>,
+        mut sim: SimGraph,
         rb: Arc<RwLock<Vec<RigidBody2D>>>,
         spring: Arc<RwLock<Vec<Spring>>>,
     ) {
@@ -255,39 +261,44 @@ where
         }
         max_m
     }
+
+    fn build_rb_vec(&self, graph: Graph<T, E, Directed, u32>) -> (Vec<RigidBody2D>, Vec<Spring>) {
+        let mut vec_rb = vec![];
+        let mut vec_spring = vec![];
+
+        let (nodes, edges) = graph.into_nodes_edges();
+
+        for _ in nodes {
+            vec_rb.push(RigidBody2D::new(
+                Vec2::new(
+                    rand::thread_rng().gen_range(-60.0..60.0),
+                    rand::thread_rng().gen_range(-60.0..60.0),
+                ),
+                1.0,
+            ));
+        }
+
+        for s in edges {
+            if self.mass_incoming {
+                vec_rb[s.target().index()].mass += 1.0;
+                vec_rb[s.source().index()].mass += 1.0;
+            }
+
+            vec_spring.push(Spring {
+                rb1: s.source().index(),
+                rb2: s.target().index(),
+                spring_neutral_len: 2.0,
+                spring_stiffness: 1.0,
+            })
+        }
+
+        (vec_rb, vec_spring)
+    }
 }
 
 fn build_perspective_matrix(target: &Frame) -> Mat4 {
     let (width, height) = target.get_dimensions();
     Mat4::perspective_infinite_lh(0.8, width as f32 / height as f32, 0.1)
-}
-
-fn build_rb_vec<'a, E>(graph: Graph<f32, E, Directed, usize>) -> (Vec<RigidBody2D>, Vec<Spring>) {
-    let mut vec_rb = vec![];
-    let mut vec_spring = vec![];
-
-    let (nodes, edges) = graph.into_nodes_edges();
-
-    for n in nodes {
-        vec_rb.push(RigidBody2D::new(
-            Vec2::new(
-                rand::thread_rng().gen_range(-60.0..60.0),
-                rand::thread_rng().gen_range(-60.0..60.0),
-            ),
-            n.weight,
-        ));
-    }
-
-    for s in edges {
-        vec_spring.push(Spring {
-            rb1: s.source().index(),
-            rb2: s.target().index(),
-            spring_neutral_len: 2.0,
-            spring_stiffness: 1.0,
-        })
-    }
-
-    (vec_rb, vec_spring)
 }
 
 fn calc_average_position(rb_v: Arc<RwLock<Vec<RigidBody2D>>>) -> Vec2 {

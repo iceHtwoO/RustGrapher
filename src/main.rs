@@ -5,11 +5,12 @@ use grapher::datavis::DataVis;
 use petgraph::Directed;
 use petgraph::Graph;
 use serde::Deserialize;
+use std::collections::HashMap;
 use std::fs::File;
 use std::io::BufReader;
 use std::io::Error;
 
-#[derive(Clone, Debug, Default)]
+#[derive(Clone, Debug, Default, Hash, PartialEq, Eq)]
 struct Data {
     name: String,
 }
@@ -26,56 +27,50 @@ struct WikiEntry {
     references: Vec<String>,
 }
 
-impl PartialEq for Data {
-    fn eq(&self, other: &Self) -> bool {
-        self.name == other.name
-    }
-}
-
 fn main() {
-    let mut g = Graph::new();
+    let mut g: Graph<Data, u32> = Graph::new();
 
     graph_wiki(&mut g);
-    //let mut g = Graph::<u32>::new(0);
-    //g.add_node_pos(1, [0.0, 0.0], true, 2.0);
-
-    //g.change_mass_based_on_incoming();
     let datavis = DataVis::new();
     datavis.create_window(g);
 }
 
-fn graph_wiki<E>(g: &mut Graph<f32, E, Directed, usize>) {
+fn graph_wiki(g: &mut Graph<Data, u32, Directed, u32>) {
+    let mut hashmap = HashMap::new();
     if let Ok(w) = load_wiki() {
         for e in w {
             println!("Node Count:{}", g.node_count());
-            if g.node_count() > 1000 {
+            if g.node_count() > 20000 {
                 break;
             }
             let node_data = Data::new(e.title);
-            let opt = g.contains_node(&node_data);
-            let mut _index = 0;
+
+            let mut _index;
+            let opt = hashmap.get(&node_data);
             if opt.is_none() {
-                _index = g.add_node(node_data);
+                _index = g.add_node(node_data.clone());
+                hashmap.insert(node_data, _index);
             } else {
-                _index = opt.unwrap();
+                _index = *opt.unwrap();
             }
 
             for r in e.references {
                 let ref_data = Data::new(r);
-                let opt_ref = g.contains_node(&ref_data);
-                let mut _index_ref = 0;
+                let opt_ref = hashmap.get(&ref_data);
+                let mut _index_ref;
                 if opt_ref.is_none() {
-                    _index_ref = g.add_node(ref_data);
+                    _index_ref = g.add_node(ref_data.clone());
+                    hashmap.insert(ref_data, _index);
                 } else {
-                    _index_ref = opt_ref.unwrap();
+                    _index_ref = *opt_ref.unwrap();
                 }
                 g.add_edge(_index, _index_ref, 1);
             }
         }
     }
 
-    println!("Nodes:{}", g.get_node_count());
-    println!("Edges:{}", g.get_edge_count());
+    println!("Nodes:{}", g.node_count());
+    println!("Edges:{}", g.edge_count());
 }
 
 fn load_wiki() -> Result<Vec<WikiEntry>, Error> {

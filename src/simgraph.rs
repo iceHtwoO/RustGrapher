@@ -5,7 +5,6 @@ use std::{
 };
 
 use glam::Vec2;
-use petgraph::graph::Edge;
 
 use crate::{
     properties::{RigidBody2D, Spring},
@@ -13,10 +12,7 @@ use crate::{
 };
 
 #[derive(Clone, Debug)]
-pub struct SimGraph<T>
-where
-    T: PartialEq + Send + Sync + 'static + Clone,
-{
+pub struct SimGraph {
     repel_force: bool,
     spring: bool,
     gravity: bool,
@@ -26,14 +22,11 @@ where
     gravity_force: f32,
     repel_force_const: f32,
     damping: f32,
-    phantom: std::marker::PhantomData<T>,
     quadtree_theta: f32,
+    freeze_thresh: f32,
 }
 
-impl<T> Default for SimGraph<T>
-where
-    T: PartialEq + Send + Sync + 'static + Clone,
-{
+impl Default for SimGraph {
     fn default() -> Self {
         Self {
             repel_force: true,
@@ -45,46 +38,15 @@ where
             gravity_force: 1.0,
             delta_time: 0.005,
             damping: 0.9,
-            phantom: std::marker::PhantomData,
             quadtree_theta: 0.75,
+            freeze_thresh: 1e-2,
         }
     }
 }
 
-impl<T> SimGraph<T>
-where
-    T: PartialEq + Send + Sync + 'static + Clone,
-{
+impl SimGraph {
     pub fn new() -> Self {
-        Self {
-            repel_force: true,
-            spring: true,
-            gravity: true,
-            repel_force_const: 100.0,
-            spring_stiffness: 100.0,
-            spring_default_len: 2.0,
-            gravity_force: 1.0,
-            delta_time: 0.005,
-            damping: 0.9,
-            phantom: std::marker::PhantomData,
-            quadtree_theta: 0.25,
-        }
-    }
-
-    pub fn new_config(repel_force: bool, spring: bool, gravity: bool) -> Self {
-        Self {
-            repel_force,
-            spring,
-            gravity,
-            repel_force_const: 100.0,
-            spring_stiffness: 100.0,
-            spring_default_len: 2.0,
-            gravity_force: 1.0,
-            delta_time: 0.005,
-            damping: 0.9,
-            phantom: std::marker::PhantomData,
-            quadtree_theta: 0.5,
-        }
+        Self::default()
     }
 
     pub fn simulation_step(
@@ -124,7 +86,7 @@ where
                     extra = node_count % thread_count;
                 }
 
-                let handle = self.spawn_physic_thread(
+                let handle = self.spawn_physics_thread(
                     thread * nodes_per_thread,
                     (thread + 1) * nodes_per_thread + extra,
                     node_count,
@@ -136,7 +98,7 @@ where
             }
 
             if self.spring {
-                self.add_graph_spring_forces(
+                self.compute_spring_forces_edges(
                     Arc::clone(&rb_arc),
                     Arc::clone(&spring_arc),
                     Arc::clone(&f_vec),
@@ -149,7 +111,7 @@ where
         }
     }
 
-    fn spawn_physic_thread(
+    fn spawn_physics_thread(
         &self,
         start_index: usize,
         end_index: usize,
@@ -170,6 +132,9 @@ where
             #[allow(clippy::needless_range_loop)]
             for i in start_index..end_index {
                 let rb = &rb_vec.read().unwrap()[i];
+                if rb.fixed {
+                    continue;
+                }
                 if repel_force {
                     // Get node approximation from Quadtree
                     let node_approximations = quadtree.get_stack(&rb.position, theta);
@@ -262,10 +227,14 @@ where
             rb.velocity *= self.damping;
 
             rb.position += rb.velocity * self.delta_time;
+
+            if self.freeze_thresh > rb.total_velocity() {
+                rb.fixed = true;
+            }
         }
     }
 
-    fn add_graph_spring_forces(
+    fn compute_spring_forces_edges(
         &self,
         rb_vec: Arc<RwLock<Vec<RigidBody2D>>>,
         spring_arc: Arc<RwLock<Vec<Spring>>>,
