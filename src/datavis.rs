@@ -8,11 +8,16 @@ use std::{
     time::Instant,
 };
 
-use crate::{graph::Graph, simgraph::SimGraph};
+use crate::{
+    properties::{RigidBody2D, Spring},
+    simgraph::SimGraph,
+};
 use camera::Camera;
-use glam::{Mat4, Vec3};
+use glam::{Mat4, Vec2, Vec3};
 use glium::{glutin::surface::WindowSurface, implement_vertex, uniform, Display, Frame, Surface};
 
+use petgraph::{Directed, Graph};
+use rand::Rng;
 use winit::{
     event::{Event, WindowEvent},
     event_loop::{ControlFlow, EventLoop},
@@ -32,26 +37,31 @@ struct Vertex {
 }
 implement_vertex!(Vertex, position, color);
 
-pub struct DataVis<T>
+pub struct DataVis<T, E>
 where
     T: PartialEq + Send + Sync + 'static + Clone,
 {
-    sim: SimGraph<T>,
+    sim: SimGraph,
     phantom: PhantomData<T>,
+    phantom2: PhantomData<E>,
+    mass_incoming: bool,
 }
 
-impl<T> DataVis<T>
+impl<T, E> DataVis<T, E>
 where
     T: PartialEq + Send + Sync + 'static + Clone + Debug + Default,
+    E: 'static,
 {
     pub fn new() -> Self {
         Self {
             sim: SimGraph::new(),
             phantom: PhantomData,
+            phantom2: PhantomData,
+            mass_incoming: true,
         }
     }
 
-    pub fn create_window(self, g: Graph<T>) {
+    pub fn create_window(self, g: Graph<T, E, Directed, u32>) {
         let event_loop = winit::event_loop::EventLoopBuilder::new().build();
 
         let (window, display) =
@@ -62,7 +72,7 @@ where
 
     fn run_render_loop(
         self,
-        graph: Graph<T>,
+        graph: Graph<T, E, Directed, u32>,
         event_loop: EventLoop<()>,
         display: Display<WindowSurface>,
         window: Window,
@@ -82,11 +92,19 @@ where
 
         let sim = self.sim.clone();
 
+        let (rb_v, spring_v) = self.build_rb_vec(graph);
+        let rb_arc = Arc::new(RwLock::new(rb_v));
+        let spring_arc = Arc::new(RwLock::new(spring_v));
+
         let self_arc = Arc::new(Mutex::new(self));
         let display_rc = Rc::new(display);
-        let graph = Arc::new(RwLock::new(graph));
 
-        Self::spawn_simulation_thread(Arc::clone(&toggle_sim), sim, Arc::clone(&graph));
+        Self::spawn_simulation_thread(
+            Arc::clone(&toggle_sim),
+            sim,
+            Arc::clone(&rb_arc),
+            Arc::clone(&spring_arc),
+        );
 
         event_loop.run(move |event, _, control_flow| {
             *control_flow = ControlFlow::Poll;
@@ -121,7 +139,7 @@ where
                             }
                         }
                         Some(winit::event::VirtualKeyCode::Return) => {
-                            let avg = graph.read().unwrap().avg_pos();
+                            let avg = calc_average_position(Arc::clone(&rb_arc));
                             camera.position[0] = avg[0];
                             camera.position[1] = avg[1];
                         }
@@ -156,7 +174,13 @@ where
                     camera.position[1] -= camera_factor;
                 }
 
-                self_mutex.draw_graph(&display_rc, Arc::clone(&graph), &camera, toggle_quadtree);
+                self_mutex.draw_graph(
+                    &display_rc,
+                    Arc::clone(&rb_arc),
+                    Arc::clone(&spring_arc),
+                    &camera,
+                    toggle_quadtree,
+                );
             }
         });
     }
@@ -164,14 +188,15 @@ where
     fn draw_graph(
         &mut self,
         display: &Display<WindowSurface>,
-        graph: Arc<RwLock<Graph<T>>>,
+        rb_v: Arc<RwLock<Vec<RigidBody2D>>>,
+        spring_v: Arc<RwLock<Vec<Spring>>>,
         camera: &Camera,
         enable_quadtree: bool,
     ) {
         let mut target = display.draw();
         target.clear_color_and_depth((0.0, 0.0, 0.0, 1.0), 1.0);
 
-        let max_mass = Self::find_max_mass(Arc::clone(&graph));
+        let max_mass = Self::find_max_mass(Arc::clone(&rb_v));
 
         let uniforms = uniform! {
             matrix: camera.matrix(),
@@ -188,7 +213,8 @@ where
         };
 
         draw::draw_edge(
-            Arc::clone(&graph),
+            Arc::clone(&rb_v),
+            Arc::clone(&spring_v),
             &mut target,
             display,
             &max_mass,
@@ -196,7 +222,7 @@ where
             &params,
         );
         draw::draw_node(
-            Arc::clone(&graph),
+            Arc::clone(&rb_v),
             &mut target,
             display,
             &max_mass,
@@ -204,7 +230,7 @@ where
             &params,
         );
         if enable_quadtree {
-            draw::draw_quadtree(Arc::clone(&graph), &mut target, display, &uniforms, &params);
+            draw::draw_quadtree(Arc::clone(&rb_v), &mut target, display, &uniforms, &params);
         }
 
         target.finish().unwrap();
@@ -212,8 +238,9 @@ where
 
     fn spawn_simulation_thread(
         toggle_sim: Arc<RwLock<bool>>,
-        mut sim: SimGraph<T>,
-        graph: Arc<RwLock<Graph<T>>>,
+        mut sim: SimGraph,
+        rb: Arc<RwLock<Vec<RigidBody2D>>>,
+        spring: Arc<RwLock<Vec<Spring>>>,
     ) {
         thread::spawn(move || loop {
             let toggle_sim_read_guard = toggle_sim.read().unwrap();
@@ -221,24 +248,66 @@ where
             drop(toggle_sim_read_guard);
 
             if sim_toggle {
-                sim.simulation_step(Arc::clone(&graph));
+                sim.simulation_step(Arc::clone(&rb), Arc::clone(&spring));
             }
         });
     }
 
-    fn find_max_mass(graph: Arc<RwLock<Graph<T>>>) -> f32 {
+    fn find_max_mass(graph: Arc<RwLock<Vec<RigidBody2D>>>) -> f32 {
         let graph_read_guard = graph.read().unwrap();
         let mut max_m = 0.0;
-        for n in graph_read_guard.get_node_iter() {
-            if let Some(rb) = &n.rigidbody {
-                max_m = rb.mass.max(max_m);
-            }
+        for rb in graph_read_guard.iter() {
+            max_m = rb.mass.max(max_m);
         }
         max_m
+    }
+
+    fn build_rb_vec(&self, graph: Graph<T, E, Directed, u32>) -> (Vec<RigidBody2D>, Vec<Spring>) {
+        let mut vec_rb = vec![];
+        let mut vec_spring = vec![];
+
+        let (nodes, edges) = graph.into_nodes_edges();
+
+        for _ in nodes {
+            vec_rb.push(RigidBody2D::new(
+                Vec2::new(
+                    rand::thread_rng().gen_range(-60.0..60.0),
+                    rand::thread_rng().gen_range(-60.0..60.0),
+                ),
+                1.0,
+            ));
+        }
+
+        for s in edges {
+            if self.mass_incoming {
+                vec_rb[s.target().index()].mass += 1.0;
+                vec_rb[s.source().index()].mass += 1.0;
+            }
+
+            vec_spring.push(Spring {
+                rb1: s.source().index(),
+                rb2: s.target().index(),
+                spring_neutral_len: 2.0,
+                spring_stiffness: 1.0,
+            })
+        }
+
+        (vec_rb, vec_spring)
     }
 }
 
 fn build_perspective_matrix(target: &Frame) -> Mat4 {
     let (width, height) = target.get_dimensions();
     Mat4::perspective_infinite_lh(0.8, width as f32 / height as f32, 0.1)
+}
+
+fn calc_average_position(rb_v: Arc<RwLock<Vec<RigidBody2D>>>) -> Vec2 {
+    let rb_guard = rb_v.read().unwrap();
+
+    let mut avg = Vec2::ZERO;
+    for rb in rb_guard.iter() {
+        avg += rb.position;
+    }
+
+    avg / rb_guard.len() as f32
 }

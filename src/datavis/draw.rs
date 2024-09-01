@@ -5,7 +5,7 @@ use std::{
 };
 
 use crate::{
-    graph::{Graph, Node},
+    properties::{RigidBody2D, Spring},
     quadtree::{BoundingBox2D, QuadTree},
 };
 use glam::Vec2;
@@ -46,8 +46,9 @@ void main() {
 }
 "#;
 
-pub fn draw_edge<T, H, R>(
-    graph: Arc<RwLock<Graph<T>>>,
+pub fn draw_edge<H, R>(
+    rb_v: Arc<RwLock<Vec<RigidBody2D>>>,
+    spring_v: Arc<RwLock<Vec<Spring>>>,
     target: &mut Frame,
     display: &Display<WindowSurface>,
     max_m: &f32,
@@ -56,28 +57,20 @@ pub fn draw_edge<T, H, R>(
 ) where
     H: AsUniformValue,
     R: Uniforms,
-    T: std::cmp::PartialEq + std::clone::Clone,
 {
     let program =
         glium::Program::from_source(display, VERTEX_SHADER_SRC, FRAGMENT_SHADER_SRC, None).unwrap();
 
     let mut shape: Vec<Vertex> = vec![];
 
-    let graph_read_guard = graph.read().unwrap();
+    let spring_read_guard = spring_v.read().unwrap();
+    let rb_read_guard = rb_v.read().unwrap();
 
-    for edge in graph_read_guard.get_edge_iter() {
-        let n1 = graph_read_guard
-            .get_node_by_index(edge.0)
-            .rigidbody
-            .as_ref()
-            .unwrap();
-        let n2 = graph_read_guard
-            .get_node_by_index(edge.1)
-            .rigidbody
-            .as_ref()
-            .unwrap();
+    for edge in spring_read_guard.iter() {
+        let rb1 = &rb_read_guard[edge.rb1];
+        let rb2 = &rb_read_guard[edge.rb2];
 
-        let min_m = n1.mass.min(n2.mass);
+        let min_m = rb1.mass.min(rb2.mass);
         let color = [
             min_m / max_m * 10.0,
             min_m / max_m * 6.0,
@@ -86,8 +79,8 @@ pub fn draw_edge<T, H, R>(
         ];
 
         shape.append(&mut shapes::line(
-            [n1.position[0], n1.position[1], -0.1],
-            [n2.position[0], n2.position[1], -0.1],
+            [rb1.position[0], rb1.position[1], -0.1],
+            [rb2.position[0], rb2.position[1], -0.1],
             color,
         ));
     }
@@ -100,8 +93,8 @@ pub fn draw_edge<T, H, R>(
         .unwrap();
 }
 
-pub fn draw_node<T, H, R>(
-    graph: Arc<RwLock<Graph<T>>>,
+pub fn draw_node<H, R>(
+    rb_v: Arc<RwLock<Vec<RigidBody2D>>>,
     target: &mut Frame,
     display: &Display<WindowSurface>,
     max_m: &f32,
@@ -110,17 +103,15 @@ pub fn draw_node<T, H, R>(
 ) where
     H: AsUniformValue,
     R: Uniforms,
-    T: std::cmp::PartialEq + std::clone::Clone,
 {
     let program =
         glium::Program::from_source(display, VERTEX_SHADER_SRC, FRAGMENT_SHADER_SRC, None).unwrap();
 
     let mut shape: Vec<Vertex> = vec![];
-    let graph_read_guard = graph.read().unwrap();
+    let graph_read_guard = rb_v.read().unwrap();
 
-    for (e, node) in graph_read_guard.get_node_iter().enumerate() {
-        let rb = node.rigidbody.as_ref().unwrap();
-        let pos = [rb.position[0], rb.position[1], -2.0];
+    for (e, rb) in graph_read_guard.iter().enumerate() {
+        let pos = [rb.position[0], rb.position[1], -0.2];
         let r = f32::sqrt(rb.mass * PI) * 0.1;
 
         let mut rand = StdRng::seed_from_u64(e as u64);
@@ -142,8 +133,8 @@ pub fn draw_node<T, H, R>(
         .unwrap();
 }
 
-pub fn draw_quadtree<T, H, R>(
-    graph: Arc<RwLock<Graph<T>>>,
+pub fn draw_quadtree<H, R>(
+    rb_v: Arc<RwLock<Vec<RigidBody2D>>>,
     target: &mut Frame,
     display: &Display<WindowSurface>,
     uniform: &UniformsStorage<H, R>,
@@ -151,22 +142,20 @@ pub fn draw_quadtree<T, H, R>(
 ) where
     H: AsUniformValue,
     R: Uniforms,
-    T: std::cmp::PartialEq + std::clone::Clone,
 {
     let program =
         glium::Program::from_source(display, VERTEX_SHADER_SRC, FRAGMENT_SHADER_SRC, None).unwrap();
 
     let mut shape: Vec<Vertex> = vec![];
 
-    let graph_read_guard = graph.read().unwrap();
+    let graph_read_guard = rb_v.read().unwrap();
 
     let mut max_x = -f32::INFINITY;
     let mut min_x = f32::INFINITY;
     let mut max_y = -f32::INFINITY;
     let mut min_y = f32::INFINITY;
 
-    for node in graph_read_guard.get_node_iter() {
-        let rb = node.rigidbody.as_ref().unwrap();
+    for rb in graph_read_guard.iter() {
         max_x = max_x.max(rb.position[0]);
         max_y = max_y.max(rb.position[1]);
         min_x = min_x.min(rb.position[0]);
@@ -179,9 +168,8 @@ pub fn draw_quadtree<T, H, R>(
 
     let mut quadtree = QuadTree::new(boundary.clone());
 
-    for node in graph_read_guard.get_node_iter() {
-        let rb = node.rigidbody.as_ref().unwrap();
-        quadtree.insert(Some(node), rb.position, rb.mass);
+    for rb in graph_read_guard.iter() {
+        quadtree.insert(Some(rb), rb.position, rb.mass);
     }
 
     get_qt_vertex(&quadtree, &mut shape);
@@ -194,10 +182,7 @@ pub fn draw_quadtree<T, H, R>(
         .unwrap();
 }
 
-fn get_qt_vertex<T>(quadtree: &QuadTree<Node<T>>, shape: &mut Vec<Vertex>)
-where
-    T: std::cmp::PartialEq + std::clone::Clone,
-{
+fn get_qt_vertex(quadtree: &QuadTree<RigidBody2D>, shape: &mut Vec<Vertex>) {
     for child in quadtree.children.iter() {
         match child {
             Some(c) => get_qt_vertex(c, shape),
