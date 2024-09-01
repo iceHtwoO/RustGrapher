@@ -2,6 +2,7 @@ extern crate glium;
 extern crate winit;
 
 use grapher::datavis::DataVis;
+use petgraph::Directed;
 use petgraph::Graph;
 use serde::Deserialize;
 use std::fs::File;
@@ -38,16 +39,16 @@ fn main() {
     //let mut g = Graph::<u32>::new(0);
     //g.add_node_pos(1, [0.0, 0.0], true, 2.0);
 
-    g.change_mass_based_on_incoming();
+    //g.change_mass_based_on_incoming();
     let datavis = DataVis::new();
     datavis.create_window(g);
 }
 
-fn graph_wiki<N, E, Ty, Ix>(g: &mut Graph<N, E, Ty, Ix>) {
+fn graph_wiki<E>(g: &mut Graph<f32, E, Directed, usize>) {
     if let Ok(w) = load_wiki() {
         for e in w {
-            println!("Node Count:{}", g.get_node_count());
-            if g.get_node_count() > 1000 {
+            println!("Node Count:{}", g.node_count());
+            if g.node_count() > 1000 {
                 break;
             }
             let node_data = Data::new(e.title);

@@ -26,3 +26,11 @@ impl RigidBody2D {
         }
     }
 }
+
+#[derive(Debug, Clone)]
+pub struct Spring {
+    pub rb1: usize,
+    pub rb2: usize,
+    pub spring_stiffness: f32,
+    pub spring_neutral_len: f32,
+}

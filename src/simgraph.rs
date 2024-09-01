@@ -8,7 +8,7 @@ use glam::Vec2;
 use petgraph::graph::Edge;
 
 use crate::{
-    properties::RigidBody2D,
+    properties::{RigidBody2D, Spring},
     quadtree::{BoundingBox2D, QuadTree},
 };
 
@@ -87,16 +87,16 @@ where
         }
     }
 
-    pub fn simulation_step<E, Ix>(
+    pub fn simulation_step(
         &mut self,
         rb_arc: Arc<RwLock<Vec<RigidBody2D>>>,
-        edge_arc: Arc<RwLock<Vec<Edge<E, Ix>>>>,
+        spring_arc: Arc<RwLock<Vec<Spring>>>,
     ) {
         let f_vec = Arc::new(Mutex::new(vec![Vec2::ZERO; rb_arc.read().unwrap().len()]));
 
         self.calculate_forces(
             Arc::clone(&rb_arc),
-            Arc::clone(&edge_arc),
+            Arc::clone(&spring_arc),
             Arc::clone(&f_vec),
         );
 
@@ -104,10 +104,10 @@ where
         self.update_node_position(Arc::clone(&rb_arc));
     }
 
-    fn calculate_forces<E, Ix>(
+    fn calculate_forces(
         &mut self,
         rb_arc: Arc<RwLock<Vec<RigidBody2D>>>,
-        edge_arc: Arc<RwLock<Vec<Edge<E, Ix>>>>,
+        spring_arc: Arc<RwLock<Vec<Spring>>>,
         f_vec: Arc<Mutex<Vec<Vec2>>>,
     ) {
         if self.repel_force || self.gravity {
@@ -138,7 +138,7 @@ where
             if self.spring {
                 self.add_graph_spring_forces(
                     Arc::clone(&rb_arc),
-                    Arc::clone(&edge_arc),
+                    Arc::clone(&spring_arc),
                     Arc::clone(&f_vec),
                 );
             }
@@ -166,7 +166,6 @@ where
 
         let handle = thread::spawn(move || {
             let mut force_vec: Vec<Vec2> = vec![Vec2::ZERO; node_count];
-            let graph_read_guard = rb_vec.read().unwrap();
 
             #[allow(clippy::needless_range_loop)]
             for i in start_index..end_index {
@@ -266,25 +265,24 @@ where
         }
     }
 
-    fn add_graph_spring_forces<E, Ix>(
+    fn add_graph_spring_forces(
         &self,
         rb_vec: Arc<RwLock<Vec<RigidBody2D>>>,
-        edge_vec: Arc<RwLock<Vec<Edge<E, IndexType>>>>,
+        spring_arc: Arc<RwLock<Vec<Spring>>>,
         force_vec_arc: Arc<Mutex<Vec<Vec2>>>,
     ) {
         let mut force_vec = force_vec_arc.lock().unwrap();
-        let rb_arc = Arc::clone(&rb_vec);
 
-        for edge in edge_vec.read().unwrap().iter() {
+        for spring in spring_arc.read().unwrap().iter() {
             let g = rb_vec.read().unwrap();
 
-            let rb1 = &g[edge.];
-            let rb2 = &g[edge.1];
+            let rb1 = &g[spring.rb1];
+            let rb2 = &g[spring.rb2];
 
             let spring_force: Vec2 = self.compute_spring_force(rb1, rb2);
 
-            force_vec[edge.0] -= spring_force;
-            force_vec[edge.1] += spring_force;
+            force_vec[spring.rb1] -= spring_force;
+            force_vec[spring.rb2] += spring_force;
         }
     }
 
