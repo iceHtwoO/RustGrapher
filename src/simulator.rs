@@ -12,12 +12,12 @@ use crate::{
 };
 
 #[derive(Clone, Debug)]
-pub struct SimGraph {
-    repel_force: bool,
+pub struct Simulator {
+    repel: bool,
     spring: bool,
     gravity: bool,
     spring_stiffness: f32,
-    spring_default_len: f32,
+    spring_neutral_length: f32,
     delta_time: f32,
     gravity_force: f32,
     repel_force_const: f32,
@@ -26,27 +26,9 @@ pub struct SimGraph {
     freeze_thresh: f32,
 }
 
-impl Default for SimGraph {
-    fn default() -> Self {
-        Self {
-            repel_force: true,
-            spring: true,
-            gravity: true,
-            repel_force_const: 100.0,
-            spring_stiffness: 100.0,
-            spring_default_len: 2.0,
-            gravity_force: 1.0,
-            delta_time: 0.005,
-            damping: 0.9,
-            quadtree_theta: 0.75,
-            freeze_thresh: 1e-2,
-        }
-    }
-}
-
-impl SimGraph {
-    pub fn new() -> Self {
-        Self::default()
+impl Simulator {
+    pub fn builder() -> SimulatorBuilder {
+        SimulatorBuilder::default()
     }
 
     pub fn simulation_step(
@@ -72,7 +54,7 @@ impl SimGraph {
         spring_arc: Arc<RwLock<Vec<Spring>>>,
         f_vec: Arc<Mutex<Vec<Vec2>>>,
     ) {
-        if self.repel_force || self.gravity {
+        if self.repel || self.gravity {
             let mut handles = vec![];
 
             let node_count = { rb_arc.read().unwrap().len() };
@@ -120,7 +102,7 @@ impl SimGraph {
         rb_vec: Arc<RwLock<Vec<RigidBody2D>>>,
     ) -> JoinHandle<()> {
         let repel_force_const = self.repel_force_const;
-        let repel_force = self.repel_force;
+        let repel_force = self.repel;
         let gravity = self.gravity;
         let gravity_force = self.gravity_force;
         let quadtree = Self::build_quadtree(Arc::clone(&rb_vec));
@@ -137,13 +119,13 @@ impl SimGraph {
                 }
                 if repel_force {
                     // Get node approximation from Quadtree
-                    let node_approximations = quadtree.get_stack(&rb.position, theta);
+                    let node_approximations = quadtree.stack(&rb.position, theta);
 
                     // Calculate Repel Force
                     for node_approximation in node_approximations {
                         let node_approximation_particle = RigidBody2D::new(
-                            node_approximation.get_position(),
-                            node_approximation.get_mass(),
+                            node_approximation.position(),
+                            node_approximation.mass(),
                         );
                         let repel_force =
                             Self::repel_force(repel_force_const, rb, &node_approximation_particle);
@@ -207,10 +189,7 @@ impl SimGraph {
         for (i, rb) in graph_write_guard.iter_mut().enumerate() {
             let node_force = force_vec[i];
 
-            rb.velocity[0] +=
-                force_vec[i][0].signum() * (node_force[0] / rb.mass).abs() * self.delta_time;
-            rb.velocity[1] +=
-                force_vec[i][1].signum() * (node_force[1] / rb.mass).abs() * self.delta_time;
+            rb.velocity += node_force / rb.mass * self.delta_time;
         }
     }
 
@@ -258,7 +237,7 @@ impl SimGraph {
     fn compute_spring_force(&self, n1: &RigidBody2D, n2: &RigidBody2D) -> Vec2 {
         let direction_vec: Vec2 = n2.position - n1.position;
         let force_magnitude =
-            self.spring_stiffness * (direction_vec.length() - self.spring_default_len);
+            self.spring_stiffness * (direction_vec.length() - self.spring_neutral_length);
 
         direction_vec.normalize_or(Vec2::ZERO) * -force_magnitude
     }
@@ -283,5 +262,140 @@ impl SimGraph {
 
     fn compute_center_gravity(gravity_force: f32, node: &RigidBody2D) -> Vec2 {
         -node.position * node.mass * gravity_force
+    }
+}
+
+/// Builder for `Simulator`
+pub struct SimulatorBuilder {
+    repel: bool,
+    spring: bool,
+    gravity: bool,
+    spring_stiffness: f32,
+    spring_neutral_length: f32,
+    delta_time: f32,
+    gravity_force: f32,
+    repel_force_const: f32,
+    damping: f32,
+    quadtree_theta: f32,
+    freeze_thresh: f32,
+}
+
+impl SimulatorBuilder {
+    /// Get a Instance of `SimulatorBuilder` with default values
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    /// If nodes should repel from each other
+    pub fn repel(mut self, repel: bool) -> Self {
+        self.repel = repel;
+        self
+    }
+
+    /// If edges should act as springs and pull the nodes together
+    pub fn spring(mut self, spring: bool) -> Self {
+        self.spring = spring;
+        self
+    }
+
+    /// If edges should be globally pulled to the center of the canvas
+    pub fn gravity(mut self, gravity: bool) -> Self {
+        self.gravity = gravity;
+        self
+    }
+
+    /// How strong the spring force should be
+    pub fn spring_stiffness(mut self, spring_stiffness: f32) -> Self {
+        self.spring_stiffness = spring_stiffness;
+        self
+    }
+
+    /// Length of a edge in neutral position.
+    /// If edge is shorter it pushers apart.
+    /// If edge is longer it pulls together.
+    /// Set to `0` if edges should always pull apart.
+    pub fn spring_neutral_length(mut self, neutral_length: f32) -> Self {
+        self.spring_neutral_length = neutral_length;
+        self
+    }
+
+    /// How strong the pull to the center should be.
+    pub fn gravity_force(mut self, gravity_force: f32) -> Self {
+        self.gravity_force = gravity_force;
+        self
+    }
+
+    /// How strong nodes should push others away.
+    pub fn repel_force(mut self, repel_force_const: f32) -> Self {
+        self.repel_force_const = repel_force_const;
+        self
+    }
+
+    /// Amount of damping that should be applied to the nodes movement
+    /// `1.0` -> No Damping
+    /// `0.0` -> No Movement
+    pub fn damping(mut self, damping: f32) -> Self {
+        self.damping = damping;
+        self
+    }
+
+    /// To improve performance(`n log(n)`) we use a Quadtree to approximate forces form far away nodes.
+    /// Higher numbers result in more approximations but faster calculations.
+    /// Value should be between 0.0 and 1.0.
+    /// `0.0` -> No approximation -> n^2 brute force
+    pub fn quadtree_accuracy(mut self, theta: f32) -> Self {
+        self.quadtree_theta = theta;
+        self
+    }
+
+    /// Freeze nodes when their velocity falls below `freeze_thresh`.
+    /// Set to `-1` to disable
+    pub fn freeze_threshold(mut self, freeze_thresh: f32) -> Self {
+        self.freeze_thresh = freeze_thresh;
+        self
+    }
+
+    /// How much time a simulation step should simulate. (euler method)
+    /// Bigger time steps result in faster simulations, but less accurate or even wrong simulations.
+    /// `delta_time` is in seconds
+    pub fn delta_time(mut self, delta_time: f32) -> Self {
+        self.delta_time = delta_time;
+        self
+    }
+
+    /// Constructs a instance of `Simulator`
+    pub fn build(self) -> Simulator {
+        Simulator {
+            repel: self.repel,
+            spring: self.spring,
+            gravity: self.gravity,
+            repel_force_const: self.repel_force_const,
+            spring_stiffness: self.spring_stiffness,
+            spring_neutral_length: self.spring_neutral_length,
+            gravity_force: self.gravity_force,
+            delta_time: self.delta_time,
+            damping: self.damping,
+            quadtree_theta: self.quadtree_theta,
+            freeze_thresh: self.freeze_thresh,
+        }
+    }
+}
+
+impl Default for SimulatorBuilder {
+    /// Get a Instance of `SimulatorBuilder` with default values
+    fn default() -> Self {
+        Self {
+            repel: true,
+            spring: true,
+            gravity: true,
+            repel_force_const: 100.0,
+            spring_stiffness: 100.0,
+            spring_neutral_length: 2.0,
+            gravity_force: 1.0,
+            delta_time: 0.005,
+            damping: 0.9,
+            quadtree_theta: 0.75,
+            freeze_thresh: 1e-2,
+        }
     }
 }

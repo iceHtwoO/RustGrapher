@@ -10,7 +10,7 @@ use std::{
 
 use crate::{
     properties::{RigidBody2D, Spring},
-    simgraph::SimGraph,
+    simulator::Simulator,
 };
 use camera::Camera;
 use glam::{Mat4, Vec2, Vec3};
@@ -41,7 +41,7 @@ pub struct DataVis<T, E>
 where
     T: PartialEq + Send + Sync + 'static + Clone,
 {
-    sim: SimGraph,
+    simulator: Simulator,
     phantom: PhantomData<T>,
     phantom2: PhantomData<E>,
     mass_incoming: bool,
@@ -52,9 +52,9 @@ where
     T: PartialEq + Send + Sync + 'static + Clone + Debug + Default,
     E: 'static,
 {
-    pub fn new() -> Self {
+    pub fn new(simulator: Simulator) -> Self {
         Self {
-            sim: SimGraph::new(),
+            simulator,
             phantom: PhantomData,
             phantom2: PhantomData,
             mass_incoming: true,
@@ -90,7 +90,7 @@ where
         let toggle_sim = Arc::new(RwLock::new(false));
         let mut toggle_quadtree = false;
 
-        let sim = self.sim.clone();
+        let sim = self.simulator.clone();
 
         let (rb_v, spring_v) = self.build_rb_vec(graph);
         let rb_arc = Arc::new(RwLock::new(rb_v));
@@ -238,7 +238,7 @@ where
 
     fn spawn_simulation_thread(
         toggle_sim: Arc<RwLock<bool>>,
-        mut sim: SimGraph,
+        mut sim: Simulator,
         rb: Arc<RwLock<Vec<RigidBody2D>>>,
         spring: Arc<RwLock<Vec<Spring>>>,
     ) {

@@ -29,12 +29,12 @@ impl<'a, T> QuadTree<'a, T> {
 
     /// Returns the position of the node.
     /// If its an approximation its the average based on `mass`
-    pub fn get_position(&self) -> Vec2 {
+    pub fn position(&self) -> Vec2 {
         self.position / self.mass
     }
 
     /// Returns the mass of the node
-    pub fn get_mass(&self) -> f32 {
+    pub fn mass(&self) -> f32 {
         self.mass
     }
 
@@ -55,7 +55,7 @@ impl<'a, T> QuadTree<'a, T> {
 
         // Search the lowest parent
         while !parent.is_leaf() {
-            let quadrant = parent.boundary.get_section(&position);
+            let quadrant = parent.boundary.section(&position);
             if parent.children[quadrant as usize].is_none() {
                 break;
             }
@@ -63,8 +63,8 @@ impl<'a, T> QuadTree<'a, T> {
             parent = parent.children[quadrant as usize].as_mut().unwrap();
         }
 
-        let mut quadrant = parent.boundary.get_section(&position);
-        let mut new_bb = parent.boundary.get_sub_quadrant(quadrant);
+        let mut quadrant = parent.boundary.section(&position);
+        let mut new_bb = parent.boundary.sub_quadrant(quadrant);
 
         // If the lowest member is a Leaf we create a new leaf and move the data down
         if parent.is_leaf() {
@@ -76,8 +76,8 @@ impl<'a, T> QuadTree<'a, T> {
             //Update the mass of the parent
             parent.update_mass(&position, &mass);
 
-            let mut leaf_quadrant = parent.boundary.get_section(&l_pos);
-            let mut leaf_new_bb = parent.boundary.get_sub_quadrant(leaf_quadrant);
+            let mut leaf_quadrant = parent.boundary.section(&l_pos);
+            let mut leaf_new_bb = parent.boundary.sub_quadrant(leaf_quadrant);
 
             while quadrant == leaf_quadrant {
                 // If child is too close, treat it as one
@@ -96,11 +96,11 @@ impl<'a, T> QuadTree<'a, T> {
                 parent = parent.children[leaf_quadrant as usize].as_mut().unwrap();
 
                 // Recalculate the position in the quadrant where the new and old data wil be placed.
-                quadrant = parent.boundary.get_section(&position);
-                new_bb = parent.boundary.get_sub_quadrant(quadrant);
+                quadrant = parent.boundary.section(&position);
+                new_bb = parent.boundary.sub_quadrant(quadrant);
 
-                leaf_quadrant = parent.boundary.get_section(&l_pos);
-                leaf_new_bb = parent.boundary.get_sub_quadrant(leaf_quadrant);
+                leaf_quadrant = parent.boundary.section(&l_pos);
+                leaf_new_bb = parent.boundary.sub_quadrant(leaf_quadrant);
             }
 
             parent.children[leaf_quadrant as usize] = Some(Self::new_leaf(
@@ -118,7 +118,7 @@ impl<'a, T> QuadTree<'a, T> {
     /// Far away nodes get approximated
     /// Higher `theta` values result in more approximations.
     /// If `theta` is 0, all nodes are returned without summarizing.
-    pub fn get_stack(&'a self, position: &Vec2, theta: f32) -> Vec<&'a Self> {
+    pub fn stack(&'a self, position: &Vec2, theta: f32) -> Vec<&'a Self> {
         let mut nodes: Vec<&QuadTree<T>> = vec![];
         let mut stack = vec![self];
         while !stack.is_empty() {
@@ -146,12 +146,12 @@ impl<'a, T> QuadTree<'a, T> {
     }
 
     /// Returns the node that is closest to given position
-    pub fn get_closest(&'a self, position: &Vec2) -> &'a Self {
+    pub fn closest(&'a self, position: &Vec2) -> &'a Self {
         let mut parent: &Self = self;
-        let mut quadrant = parent.boundary.get_section(position);
+        let mut quadrant = parent.boundary.section(position);
         while parent.children[quadrant as usize].is_some() {
             parent = parent.children[quadrant as usize].as_ref().unwrap();
-            quadrant = parent.boundary.get_section(position);
+            quadrant = parent.boundary.section(position);
         }
         parent
     }
@@ -196,7 +196,7 @@ impl BoundingBox2D {
             height,
         }
     }
-    fn get_section(&self, loc: &Vec2) -> u8 {
+    fn section(&self, loc: &Vec2) -> u8 {
         let mut section = 0x00;
 
         if loc[1] > self.center[1] {
@@ -210,7 +210,7 @@ impl BoundingBox2D {
         section
     }
 
-    pub fn get_sub_quadrant(&self, section: u8) -> Self {
+    pub fn sub_quadrant(&self, section: u8) -> Self {
         let mut shift = self.center;
         if section & 0b01 > 0 {
             shift[0] += 0.25 * self.width;

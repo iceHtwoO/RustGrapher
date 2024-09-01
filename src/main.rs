@@ -2,6 +2,7 @@ extern crate glium;
 extern crate winit;
 
 use grapher::datavis::DataVis;
+use grapher::simulator::SimulatorBuilder;
 use petgraph::Directed;
 use petgraph::Graph;
 use serde::Deserialize;
@@ -31,7 +32,8 @@ fn main() {
     let mut g: Graph<Data, u32> = Graph::new();
 
     graph_wiki(&mut g);
-    let datavis = DataVis::new();
+    let simulator = SimulatorBuilder::new().delta_time(0.01).build();
+    let datavis = DataVis::new(simulator);
     datavis.create_window(g);
 }
 
@@ -40,7 +42,7 @@ fn graph_wiki(g: &mut Graph<Data, u32, Directed, u32>) {
     if let Ok(w) = load_wiki() {
         for e in w {
             println!("Node Count:{}", g.node_count());
-            if g.node_count() > 20000 {
+            if g.node_count() > 1000 {
                 break;
             }
             let node_data = Data::new(e.title);

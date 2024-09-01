@@ -44,7 +44,7 @@ fn quadtree_get_stack(c: &mut Criterion) {
         }
         group.bench_function(format!("Nodes: {}", i), |b| {
             b.iter(|| {
-                qt.get_stack(
+                qt.stack(
                     black_box(&Vec2::new(
                         rng.gen_range((-w / 2.0)..(w / 2.0)),
                         rng.gen_range((-w / 2.0)..(w / 2.0)),

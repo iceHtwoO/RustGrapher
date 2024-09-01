@@ -172,7 +172,7 @@ pub fn draw_quadtree<H, R>(
         quadtree.insert(Some(rb), rb.position, rb.mass);
     }
 
-    get_qt_vertex(&quadtree, &mut shape);
+    qt_vertex(&quadtree, &mut shape);
 
     let vertex_buffer = glium::VertexBuffer::new(display, &shape).unwrap();
     let indices = glium::index::NoIndices(glium::index::PrimitiveType::LinesList);
@@ -182,10 +182,10 @@ pub fn draw_quadtree<H, R>(
         .unwrap();
 }
 
-fn get_qt_vertex(quadtree: &QuadTree<RigidBody2D>, shape: &mut Vec<Vertex>) {
+fn qt_vertex(quadtree: &QuadTree<RigidBody2D>, shape: &mut Vec<Vertex>) {
     for child in quadtree.children.iter() {
         match child {
-            Some(c) => get_qt_vertex(c, shape),
+            Some(c) => qt_vertex(c, shape),
             None => (),
         }
     }
