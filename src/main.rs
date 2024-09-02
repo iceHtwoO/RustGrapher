@@ -32,7 +32,10 @@ fn main() {
     let mut g: Graph<Data, u32> = Graph::new();
 
     graph_wiki(&mut g);
-    let simulator = SimulatorBuilder::new().delta_time(0.01).build();
+    let simulator = SimulatorBuilder::new()
+        .delta_time(0.01)
+        .freeze_threshold(-1.0)
+        .build();
     let datavis = DataVis::new(simulator);
     datavis.create_window(g);
 }

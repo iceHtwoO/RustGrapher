@@ -248,7 +248,12 @@ where
             drop(toggle_sim_read_guard);
 
             if sim_toggle {
+                let sim_start = Instant::now();
                 sim.simulation_step(Arc::clone(&rb), Arc::clone(&spring));
+                println!(
+                    "Simulations Per Second: {}",
+                    1.0 / sim_start.elapsed().as_secs_f32()
+                )
             }
         });
     }
