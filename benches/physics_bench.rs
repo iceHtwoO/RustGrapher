@@ -1,4 +1,4 @@
-use criterion::{black_box, criterion_group, criterion_main, Criterion};
+use criterion::{black_box, criterion_group, criterion_main, BenchmarkId, Criterion};
 use glam::Vec2;
 use grapher::quadtree::{BoundingBox2D, QuadTree};
 use rand::Rng;
@@ -42,7 +42,8 @@ fn quadtree_get_stack(c: &mut Criterion) {
                 rng.gen_range(1.0..2000.0),
             )
         }
-        group.bench_function(format!("Nodes: {}", i), |b| {
+        group.throughput(criterion::Throughput::Elements(i as u64));
+        group.bench_function(BenchmarkId::new("Quadtree Stack", i), |b| {
             b.iter(|| {
                 qt.stack(
                     black_box(&Vec2::new(
