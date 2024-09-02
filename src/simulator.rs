@@ -50,17 +50,18 @@ impl Simulator {
 
     fn calculate_forces(
         &mut self,
-        rb_arc: Arc<RwLock<Vec<RigidBody2D>>>,
+        rigid_bodies: Arc<RwLock<Vec<RigidBody2D>>>,
         spring_arc: Arc<RwLock<Vec<Spring>>>,
         f_vec: Arc<Mutex<Vec<Vec2>>>,
     ) {
         if self.repel || self.gravity {
             let mut handles = vec![];
 
-            let node_count = { rb_arc.read().unwrap().len() };
+            let node_count = { rigid_bodies.read().unwrap().len() };
             let thread_count = usize::min(node_count, 16);
             let nodes_per_thread = node_count / thread_count;
 
+            let quadtree = Arc::new(Self::build_quadtree(Arc::clone(&rigid_bodies)));
             for thread in 0..thread_count {
                 let mut extra = 0;
 
@@ -73,7 +74,8 @@ impl Simulator {
                     (thread + 1) * nodes_per_thread + extra,
                     node_count,
                     Arc::clone(&f_vec),
-                    Arc::clone(&rb_arc),
+                    Arc::clone(&rigid_bodies),
+                    Arc::clone(&quadtree),
                 );
 
                 handles.push(handle);
@@ -81,7 +83,7 @@ impl Simulator {
 
             if self.spring {
                 self.compute_spring_forces_edges(
-                    Arc::clone(&rb_arc),
+                    Arc::clone(&rigid_bodies),
                     Arc::clone(&spring_arc),
                     Arc::clone(&f_vec),
                 );
@@ -93,19 +95,22 @@ impl Simulator {
         }
     }
 
-    fn spawn_physics_thread(
+    fn spawn_physics_thread<T>(
         &self,
         start_index: usize,
         end_index: usize,
         node_count: usize,
         force_vec_out: Arc<Mutex<Vec<Vec2>>>,
         rb_vec: Arc<RwLock<Vec<RigidBody2D>>>,
-    ) -> JoinHandle<()> {
+        quadtree: Arc<QuadTree<'static, T>>,
+    ) -> JoinHandle<()>
+    where
+        T: std::marker::Send + std::marker::Sync,
+    {
         let repel_force_const = self.repel_force_const;
         let repel_force = self.repel;
         let gravity = self.gravity;
         let gravity_force = self.gravity_force;
-        let quadtree = Self::build_quadtree(Arc::clone(&rb_vec));
         let theta = self.quadtree_theta;
 
         let handle = thread::spawn(move || {

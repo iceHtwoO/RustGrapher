@@ -6,7 +6,8 @@ const EPSILON: f32 = 1e-3;
 
 /// Implementation of a quadtree for the barnes-hut algorithm.
 /// An area gets split up into 4 sections and each can contain a leaf or another quadtree
-/// This can be used to approximate far away nodes to reduce calculations.#[derive(Debug)]
+/// This can be used to approximate far away nodes to reduce calculations.
+#[derive(Debug)]
 pub struct QuadTree<'a, T> {
     pub data: Option<&'a T>,
     pub children: Vec<Option<Self>>,
