@@ -53,7 +53,6 @@ impl<'a, T> QuadTree<'a, T> {
             parent.data = data;
             return;
         }
-
         // Search the lowest parent
         while !parent.is_leaf() {
             let quadrant = parent.boundary.section(&position);
@@ -72,21 +71,21 @@ impl<'a, T> QuadTree<'a, T> {
             let leaf_position = parent.position;
             let leaf_mass = parent.mass;
             let leaf_data = parent.data;
+            parent.data = None;
             let l_pos = leaf_position / leaf_mass;
 
             //Update the mass of the parent
             parent.update_mass(&position, &mass);
 
+            // If child is too close, treat it as one
+            if position.distance(leaf_position / leaf_mass) < EPSILON {
+                return;
+            }
+
             let mut leaf_quadrant = parent.boundary.section(&l_pos);
             let mut leaf_new_bb = parent.boundary.sub_quadrant(leaf_quadrant);
 
             while quadrant == leaf_quadrant {
-                // If child is too close, treat it as one
-                if (leaf_position[0] - position[0]).abs() < EPSILON
-                    && (leaf_position[1] - position[1]).abs() < EPSILON
-                {
-                    return;
-                }
                 // Create a new Quadrant and set it to parent
                 parent.children[leaf_quadrant as usize] = Some(QuadTree::new_leaf(
                     None,
@@ -182,7 +181,7 @@ impl<'a, T> QuadTree<'a, T> {
     }
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct BoundingBox2D {
     pub center: Vec2,
     pub width: f32,
@@ -229,5 +228,91 @@ impl BoundingBox2D {
             width: self.width * 0.5,
             height: self.height * 0.5,
         }
+    }
+}
+
+#[cfg(test)]
+mod test {
+    use super::*;
+
+    #[test]
+    fn test_bounding_box_section() {
+        let bb: BoundingBox2D = BoundingBox2D::new(Vec2::ZERO, 10.0, 10.0);
+        assert_eq!(bb.section(&Vec2::new(-1.0, -1.0)), 0);
+        assert_eq!(bb.section(&Vec2::new(1.0, -1.0)), 1);
+        assert_eq!(bb.section(&Vec2::new(-1.0, 1.0)), 2);
+        assert_eq!(bb.section(&Vec2::new(1.0, 1.0)), 3);
+    }
+
+    #[test]
+    fn test_bounding_box_sub_quadrant() {
+        let bb: BoundingBox2D = BoundingBox2D::new(Vec2::ZERO, 10.0, 10.0);
+        assert_eq!(
+            bb.sub_quadrant(0),
+            BoundingBox2D::new(Vec2::new(-2.5, -2.5), 5.0, 5.0)
+        );
+        assert_eq!(
+            bb.sub_quadrant(1),
+            BoundingBox2D::new(Vec2::new(2.5, -2.5), 5.0, 5.0)
+        );
+        assert_eq!(
+            bb.sub_quadrant(2),
+            BoundingBox2D::new(Vec2::new(-2.5, 2.5), 5.0, 5.0)
+        );
+        assert_eq!(
+            bb.sub_quadrant(3),
+            BoundingBox2D::new(Vec2::new(2.5, 2.5), 5.0, 5.0)
+        );
+    }
+
+    #[test]
+    fn test_quadtree_insert() {
+        let mut qt: QuadTree<u32> = QuadTree::new(BoundingBox2D::new(Vec2::ZERO, 10.0, 10.0));
+        // Insert first node
+        let mass = 5.0;
+        let d = 0;
+        qt.insert(Some(&d), Vec2::new(-1.0, -1.0), mass);
+        assert_eq!(qt.mass, mass);
+        assert_eq!(qt.data, Some(&d));
+
+        // Insert second node in in the same quadrant but different sub quadrant
+        //  N1-R-N2
+        let mass1 = 30.0;
+        let d1 = 1;
+        qt.insert(Some(&d1), Vec2::new(1.0, 1.0), mass1);
+        // check root node
+        assert!(qt.data.is_none());
+        assert_eq!(qt.mass, mass1 + mass);
+
+        // check node0
+        assert!(qt.children[0].is_some());
+        let node = qt.children[0].as_ref().unwrap();
+        assert!(node.data.is_some());
+        assert_eq!(node.data, Some(&d));
+        assert_eq!(node.mass, mass);
+
+        // check node1
+        assert!(qt.children[3].is_some());
+        let node = qt.children[3].as_ref().unwrap();
+        assert!(node.data.is_some());
+        assert_eq!(node.data, Some(&d1));
+        assert_eq!(node.mass, mass1);
+
+        let mass2 = 60.0;
+        let d2 = 2;
+        // Insert on same position
+        qt.insert(Some(&d2), Vec2::new(1.0, 1.0), mass2);
+        // Node0 should be unchanged
+        assert!(qt.children[0].is_some());
+        let node = qt.children[0].as_ref().unwrap();
+        assert!(node.data.is_some());
+        assert_eq!(node.data, Some(&d));
+        assert_eq!(node.mass, mass);
+
+        // Mass should have been updated of node1
+        assert!(qt.children[3].is_some());
+        let node = qt.children[3].as_ref().unwrap();
+        assert!(node.data.is_none());
+        assert_eq!(node.mass, mass1 + mass2);
     }
 }
