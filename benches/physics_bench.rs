@@ -1,6 +1,9 @@
 use criterion::{black_box, criterion_group, criterion_main, BenchmarkId, Criterion};
 use glam::Vec2;
-use grapher::quadtree::{BoundingBox2D, QuadTree};
+use grapher::{
+    qtv::QuadTreeVec,
+    quadtree::{BoundingBox2D, QuadTree},
+};
 use rand::Rng;
 
 const NODE: [u32; 14] = [
@@ -10,11 +13,25 @@ fn quadtree_insert(c: &mut Criterion) {
     let w = 1000.0;
     let bb = BoundingBox2D::new(Vec2::ZERO, w, w);
     let mut qt: QuadTree<u32> = QuadTree::new(bb.clone());
+    let mut qtv: QuadTreeVec = QuadTreeVec::new(bb.clone());
     let mut rng = rand::thread_rng();
-    c.bench_function("Quadtree insert", |b| {
+    let mut group = c.benchmark_group("QuadTree insert");
+    group.bench_function("Recursive Quadtree", |b| {
         b.iter(|| {
             qt.insert(
                 None,
+                black_box(Vec2::new(
+                    rng.gen_range((-w / 2.0)..(w / 2.0)),
+                    rng.gen_range((-w / 2.0)..(w / 2.0)),
+                )),
+                rng.gen_range(1.0..2000.0),
+            )
+        });
+    });
+
+    group.bench_function("Vector Quadtree", |b| {
+        b.iter(|| {
+            qtv.insert(
                 black_box(Vec2::new(
                     rng.gen_range((-w / 2.0)..(w / 2.0)),
                     rng.gen_range((-w / 2.0)..(w / 2.0)),
@@ -57,5 +74,5 @@ fn quadtree_get_stack(c: &mut Criterion) {
     }
 }
 
-criterion_group!(simulation, quadtree_insert, quadtree_get_stack);
+criterion_group!(simulation, quadtree_insert /*quadtree_get_stack*/,);
 criterion_main!(simulation);

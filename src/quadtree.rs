@@ -196,7 +196,7 @@ impl BoundingBox2D {
             height,
         }
     }
-    fn section(&self, loc: &Vec2) -> u8 {
+    pub fn section(&self, loc: &Vec2) -> u8 {
         let mut section = 0x00;
 
         if loc[1] > self.center[1] {
