@@ -25,6 +25,7 @@ pub struct Simulator {
     damping: f32,
     quadtree_theta: f32,
     freeze_thresh: f32,
+    max_threads: u32,
 }
 
 impl Simulator {
@@ -56,10 +57,11 @@ impl Simulator {
         f_vec: Arc<Mutex<Vec<Vec2>>>,
     ) {
         if self.repel || self.gravity {
-            let mut handles = vec![];
-
             let node_count = { rigid_bodies.read().unwrap().len() };
-            let thread_count = usize::min(node_count, 16);
+            let thread_count = usize::min(node_count, self.max_threads as usize);
+
+            let mut handles = Vec::with_capacity(thread_count);
+
             let nodes_per_thread = node_count / thread_count;
 
             let quadtree = Arc::new(Self::build_quadtree(Arc::clone(&rigid_bodies)));
@@ -159,21 +161,16 @@ impl Simulator {
     fn build_quadtree(rb_vec_arc: Arc<RwLock<Vec<RigidBody2D>>>) -> QuadTree {
         let rb_vec_guard = rb_vec_arc.read().unwrap();
 
-        let mut max_x = -f32::INFINITY;
-        let mut min_x = f32::INFINITY;
-        let mut max_y = -f32::INFINITY;
-        let mut min_y = f32::INFINITY;
+        let mut min = Vec2::INFINITY;
+        let mut max = Vec2::NEG_INFINITY;
 
         for rb in rb_vec_guard.iter() {
-            max_x = max_x.max(rb.position[0]);
-            max_y = max_y.max(rb.position[1]);
-            min_x = min_x.min(rb.position[0]);
-            min_y = min_y.min(rb.position[1]);
+            min = min.min(rb.position);
+            max = max.max(rb.position);
         }
+        let dir = max - min;
 
-        let w = max_x - min_x;
-        let h = max_y - min_y;
-        let boundary = BoundingBox2D::new(Vec2::new(min_x + 0.5 * w, min_y + 0.5 * h), w, h);
+        let boundary = BoundingBox2D::new((dir / 2.0) + min, dir[0], dir[1]);
         let mut quadtree = QuadTree::with_capacity(boundary.clone(), rb_vec_guard.len());
 
         for rb in rb_vec_guard.iter() {
@@ -201,8 +198,7 @@ impl Simulator {
 
         'damping: for rb in graph_write_guard.iter_mut() {
             if rb.fixed {
-                rb.velocity[0] = 0.0;
-                rb.velocity[1] = 0.0;
+                rb.velocity = Vec2::ZERO;
                 continue 'damping;
             }
 
@@ -248,13 +244,13 @@ impl Simulator {
     fn repel_force(repel_force_const: f32, n1: &RigidBody2D, n2: &RigidBody2D) -> Vec2 {
         let dir_vec: Vec2 = n2.position - n1.position;
 
-        let dir_vec_normalized = dir_vec.normalize_or(Vec2::ZERO);
         if dir_vec.length_squared() == 0.0 {
             return Vec2::ZERO;
         }
 
         let f = -repel_force_const * (n1.mass * n2.mass).abs() / dir_vec.length_squared();
 
+        let dir_vec_normalized = dir_vec.normalize_or(Vec2::ZERO);
         let force = dir_vec_normalized * f;
 
         force.clamp(
@@ -281,6 +277,7 @@ pub struct SimulatorBuilder {
     damping: f32,
     quadtree_theta: f32,
     freeze_thresh: f32,
+    max_threads: u32,
 }
 
 impl SimulatorBuilder {
@@ -335,7 +332,9 @@ impl SimulatorBuilder {
     }
 
     /// Amount of damping that should be applied to the nodes movement
+    ///
     /// `1.0` -> No Damping
+    ///
     /// `0.0` -> No Movement
     pub fn damping(mut self, damping: f32) -> Self {
         self.damping = damping;
@@ -344,7 +343,9 @@ impl SimulatorBuilder {
 
     /// To improve performance(`n log(n)`) we use a Quadtree to approximate forces form far away nodes.
     /// Higher numbers result in more approximations but faster calculations.
+    ///
     /// Value should be between 0.0 and 1.0.
+    ///
     /// `0.0` -> No approximation -> n^2 brute force
     pub fn quadtree_accuracy(mut self, theta: f32) -> Self {
         self.quadtree_theta = theta;
@@ -359,10 +360,28 @@ impl SimulatorBuilder {
     }
 
     /// How much time a simulation step should simulate. (euler method)
+    ///
     /// Bigger time steps result in faster simulations, but less accurate or even wrong simulations.
+    ///
     /// `delta_time` is in seconds
+    ///
+    /// Panics when delta time is `0` or below
     pub fn delta_time(mut self, delta_time: f32) -> Self {
+        if delta_time <= 0.0 {
+            panic!("delta_time may not be 0 or below!");
+        }
         self.delta_time = delta_time;
+        self
+    }
+
+    /// How many CPU threads should be used to calculate physics
+    ///
+    /// Panics when thread count is `0`
+    pub fn max_threads(mut self, max_threads: u32) -> Self {
+        if max_threads == 0 {
+            panic!("Threads may not be 0!");
+        }
+        self.max_threads = max_threads;
         self
     }
 
@@ -380,6 +399,7 @@ impl SimulatorBuilder {
             damping: self.damping,
             quadtree_theta: self.quadtree_theta,
             freeze_thresh: self.freeze_thresh,
+            max_threads: self.max_threads,
         }
     }
 }
@@ -399,6 +419,7 @@ impl Default for SimulatorBuilder {
             damping: 0.9,
             quadtree_theta: 0.75,
             freeze_thresh: 1e-2,
+            max_threads: 16,
         }
     }
 }
