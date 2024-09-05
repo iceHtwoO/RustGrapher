@@ -108,6 +108,49 @@ impl QuadTreeVec {
             bb = bb.sub_quadrant(section);
         }
     }
+
+    pub fn stack<'a>(&'a self, position: &Vec2, theta: f32) -> Vec<&'a Node> {
+        let mut nodes: Vec<&Node> = vec![];
+
+        let mut s: f32 = self.boundary.width.max(self.boundary.height);
+
+        if self.children.is_empty() {
+            return vec![];
+        }
+
+        let mut stack: Vec<u32> = vec![0];
+        let mut new_stack: Vec<u32> = vec![];
+        'outer: loop {
+            while !stack.is_empty() {
+                let parent = &self.children[stack.pop().unwrap() as usize];
+
+                if let Node::Root { indices, mass, pos } = parent {
+                    let center_mass = parent.get_center();
+                    let dist = center_mass.distance(*position);
+                    if s / dist < theta {
+                        nodes.push(parent);
+                    } else {
+                        for i in indices {
+                            if *i != u32::MAX {
+                                new_stack.push(*i);
+                            }
+                        }
+                    }
+                }
+
+                if let Node::Leaf { mass, pos } = parent {
+                    nodes.push(parent);
+                }
+            }
+            if new_stack.is_empty() {
+                break 'outer;
+            }
+            s *= 0.5;
+            stack = new_stack;
+            new_stack = vec![];
+        }
+        nodes
+    }
 }
 
 impl Node {
@@ -129,6 +172,13 @@ impl Node {
     #[allow(dead_code)]
     fn is_root(&self) -> bool {
         matches!(self, Node::Root { .. })
+    }
+
+    fn get_center(&self) -> Vec2 {
+        match self {
+            Node::Root { pos, mass, .. } => pos / mass,
+            Node::Leaf { pos, .. } => *pos,
+        }
     }
 }
 
