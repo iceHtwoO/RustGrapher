@@ -32,6 +32,15 @@ impl QuadTree {
             children: Vec::new(),
         }
     }
+
+    pub fn with_capacity(boundary: BoundingBox2D, capacity: usize) -> Self {
+        Self {
+            root: 0,
+            boundary,
+            children: Vec::with_capacity(capacity),
+        }
+    }
+
     pub fn insert(&mut self, new_pos: Vec2, new_mass: f32) {
         self.children.push(Node::new_leaf(new_pos, new_mass));
         let new_index = self.children.len() as u32 - 1;
@@ -126,6 +135,9 @@ impl QuadTree {
                     let center_mass = parent.position();
                     let dist = center_mass.distance(*position);
                     if s / dist < theta {
+                        if nodes.capacity() == nodes.len() {
+                            nodes.reserve((nodes.len() as f32 * 0.1) as usize);
+                        }
                         nodes.push(parent);
                     } else {
                         for i in indices {
@@ -137,6 +149,9 @@ impl QuadTree {
                 }
 
                 if let Node::Leaf { .. } = parent {
+                    if nodes.capacity() == nodes.len() {
+                        nodes.reserve((nodes.len() as f32 * 0.1) as usize);
+                    }
                     nodes.push(parent);
                 }
             }

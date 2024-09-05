@@ -174,7 +174,7 @@ impl Simulator {
         let w = max_x - min_x;
         let h = max_y - min_y;
         let boundary = BoundingBox2D::new(Vec2::new(min_x + 0.5 * w, min_y + 0.5 * h), w, h);
-        let mut quadtree = QuadTree::new(boundary.clone());
+        let mut quadtree = QuadTree::with_capacity(boundary.clone(), rb_vec_guard.len());
 
         for rb in rb_vec_guard.iter() {
             quadtree.insert(rb.position, rb.mass);

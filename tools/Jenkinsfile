@@ -20,7 +20,7 @@ pipeline {
                 sh "cargo clippy -- -Dwarnings"
             }
         }
-        stage('Lint') {
+        stage('Test') {
             steps {
                 sh "cargo test"
             }

@@ -53,5 +53,20 @@ fn quadtree_get_stack(c: &mut Criterion) {
     }
 }
 
-criterion_group!(simulation, quadtree_insert, quadtree_get_stack);
+fn bounding_box_sub_quadrant(c: &mut Criterion) {
+    let bb = BoundingBox2D::new(Vec2::ZERO, 1000.0, 1000.0);
+    let mut group = c.benchmark_group("BB Sub_quadrant");
+    group.bench_function(BenchmarkId::new("BB Sub_quadrant", 0), |b| {
+        b.iter(|| {
+            bb.sub_quadrant(black_box(rand::thread_rng().gen_range(0..=3)));
+        });
+    });
+}
+
+criterion_group!(
+    simulation,
+    quadtree_insert,
+    quadtree_get_stack,
+    bounding_box_sub_quadrant
+);
 criterion_main!(simulation);
