@@ -4,11 +4,7 @@ use std::{
     sync::{Arc, RwLock},
 };
 
-use crate::{
-    properties::{RigidBody2D, Spring},
-    quadtree::{BoundingBox2D, QuadTree},
-};
-use glam::Vec2;
+use crate::properties::{RigidBody2D, Spring};
 use glium::{
     glutin::surface::WindowSurface,
     uniforms::{AsUniformValue, Uniforms, UniformsStorage},
@@ -131,72 +127,4 @@ pub fn draw_node<H, R>(
     target
         .draw(&vertex_buffer, indices, &program, uniform, params)
         .unwrap();
-}
-
-pub fn draw_quadtree<H, R>(
-    rb_v: Arc<RwLock<Vec<RigidBody2D>>>,
-    target: &mut Frame,
-    display: &Display<WindowSurface>,
-    uniform: &UniformsStorage<H, R>,
-    params: &DrawParameters,
-) where
-    H: AsUniformValue,
-    R: Uniforms,
-{
-    let program =
-        glium::Program::from_source(display, VERTEX_SHADER_SRC, FRAGMENT_SHADER_SRC, None).unwrap();
-
-    let mut shape: Vec<Vertex> = vec![];
-
-    let graph_read_guard = rb_v.read().unwrap();
-
-    let mut max_x = -f32::INFINITY;
-    let mut min_x = f32::INFINITY;
-    let mut max_y = -f32::INFINITY;
-    let mut min_y = f32::INFINITY;
-
-    for rb in graph_read_guard.iter() {
-        max_x = max_x.max(rb.position[0]);
-        max_y = max_y.max(rb.position[1]);
-        min_x = min_x.min(rb.position[0]);
-        min_y = min_y.min(rb.position[1]);
-    }
-
-    let w = max_x - min_x;
-    let h = max_y - min_y;
-    let boundary = BoundingBox2D::new(Vec2::new(min_x + 0.5 * w, min_y + 0.5 * h), w, h);
-
-    let mut quadtree = QuadTree::new(boundary.clone());
-
-    for rb in graph_read_guard.iter() {
-        quadtree.insert(Some(rb), rb.position, rb.mass);
-    }
-
-    qt_vertex(&quadtree, &mut shape);
-
-    let vertex_buffer = glium::VertexBuffer::new(display, &shape).unwrap();
-    let indices = glium::index::NoIndices(glium::index::PrimitiveType::LinesList);
-
-    target
-        .draw(&vertex_buffer, indices, &program, uniform, params)
-        .unwrap();
-}
-
-fn qt_vertex(quadtree: &QuadTree<RigidBody2D>, shape: &mut Vec<Vertex>) {
-    for child in quadtree.children.iter() {
-        match child {
-            Some(c) => qt_vertex(c, shape),
-            None => (),
-        }
-    }
-    let boundary = quadtree.boundary.clone();
-
-    let pos = [boundary.center[0], boundary.center[1], 0.1];
-
-    shape.append(&mut shapes::rectangle_lines(
-        pos,
-        [0.0, 0.0, 1.0, 1.0],
-        boundary.width * 0.5,
-        boundary.height * 0.5,
-    ));
 }

@@ -179,7 +179,6 @@ where
                     Arc::clone(&rb_arc),
                     Arc::clone(&spring_arc),
                     &camera,
-                    toggle_quadtree,
                 );
             }
         });
@@ -191,7 +190,6 @@ where
         rb_v: Arc<RwLock<Vec<RigidBody2D>>>,
         spring_v: Arc<RwLock<Vec<Spring>>>,
         camera: &Camera,
-        enable_quadtree: bool,
     ) {
         let mut target = display.draw();
         target.clear_color_and_depth((0.0, 0.0, 0.0, 1.0), 1.0);
@@ -229,9 +227,6 @@ where
             &uniforms,
             &params,
         );
-        if enable_quadtree {
-            draw::draw_quadtree(Arc::clone(&rb_v), &mut target, display, &uniforms, &params);
-        }
 
         target.finish().unwrap();
     }

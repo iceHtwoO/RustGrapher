@@ -8,7 +8,8 @@ use glam::Vec2;
 
 use crate::{
     properties::{RigidBody2D, Spring},
-    quadtree::{BoundingBox2D, QuadTree},
+    quadtree::BoundingBox2D,
+    quadtree::QuadTree,
 };
 
 #[derive(Clone, Debug)]
@@ -95,18 +96,15 @@ impl Simulator {
         }
     }
 
-    fn spawn_physics_thread<T>(
+    fn spawn_physics_thread(
         &self,
         start_index: usize,
         end_index: usize,
         node_count: usize,
         force_vec_out: Arc<Mutex<Vec<Vec2>>>,
         rb_vec: Arc<RwLock<Vec<RigidBody2D>>>,
-        quadtree: Arc<QuadTree<'static, T>>,
-    ) -> JoinHandle<()>
-    where
-        T: std::marker::Send + std::marker::Sync,
-    {
+        quadtree: Arc<QuadTree>,
+    ) -> JoinHandle<()> {
         let repel_force_const = self.repel_force_const;
         let repel_force = self.repel;
         let gravity = self.gravity;
@@ -158,7 +156,7 @@ impl Simulator {
         handle
     }
 
-    fn build_quadtree(rb_vec_arc: Arc<RwLock<Vec<RigidBody2D>>>) -> QuadTree<'static, u32> {
+    fn build_quadtree(rb_vec_arc: Arc<RwLock<Vec<RigidBody2D>>>) -> QuadTree {
         let rb_vec_guard = rb_vec_arc.read().unwrap();
 
         let mut max_x = -f32::INFINITY;
@@ -179,7 +177,7 @@ impl Simulator {
         let mut quadtree = QuadTree::new(boundary.clone());
 
         for rb in rb_vec_guard.iter() {
-            quadtree.insert(None, rb.position, rb.mass);
+            quadtree.insert(rb.position, rb.mass);
         }
         quadtree
     }
