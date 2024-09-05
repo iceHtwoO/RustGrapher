@@ -8,7 +8,8 @@ use glam::Vec2;
 
 use crate::{
     properties::{RigidBody2D, Spring},
-    quadtree::{BoundingBox2D, QuadTree},
+    quadtree::BoundingBox2D,
+    quadtree::QuadTree,
 };
 
 #[derive(Clone, Debug)]
@@ -50,17 +51,18 @@ impl Simulator {
 
     fn calculate_forces(
         &mut self,
-        rb_arc: Arc<RwLock<Vec<RigidBody2D>>>,
+        rigid_bodies: Arc<RwLock<Vec<RigidBody2D>>>,
         spring_arc: Arc<RwLock<Vec<Spring>>>,
         f_vec: Arc<Mutex<Vec<Vec2>>>,
     ) {
         if self.repel || self.gravity {
             let mut handles = vec![];
 
-            let node_count = { rb_arc.read().unwrap().len() };
+            let node_count = { rigid_bodies.read().unwrap().len() };
             let thread_count = usize::min(node_count, 16);
             let nodes_per_thread = node_count / thread_count;
 
+            let quadtree = Arc::new(Self::build_quadtree(Arc::clone(&rigid_bodies)));
             for thread in 0..thread_count {
                 let mut extra = 0;
 
@@ -73,7 +75,8 @@ impl Simulator {
                     (thread + 1) * nodes_per_thread + extra,
                     node_count,
                     Arc::clone(&f_vec),
-                    Arc::clone(&rb_arc),
+                    Arc::clone(&rigid_bodies),
+                    Arc::clone(&quadtree),
                 );
 
                 handles.push(handle);
@@ -81,7 +84,7 @@ impl Simulator {
 
             if self.spring {
                 self.compute_spring_forces_edges(
-                    Arc::clone(&rb_arc),
+                    Arc::clone(&rigid_bodies),
                     Arc::clone(&spring_arc),
                     Arc::clone(&f_vec),
                 );
@@ -100,12 +103,12 @@ impl Simulator {
         node_count: usize,
         force_vec_out: Arc<Mutex<Vec<Vec2>>>,
         rb_vec: Arc<RwLock<Vec<RigidBody2D>>>,
+        quadtree: Arc<QuadTree>,
     ) -> JoinHandle<()> {
         let repel_force_const = self.repel_force_const;
         let repel_force = self.repel;
         let gravity = self.gravity;
         let gravity_force = self.gravity_force;
-        let quadtree = Self::build_quadtree(Arc::clone(&rb_vec));
         let theta = self.quadtree_theta;
 
         let handle = thread::spawn(move || {
@@ -153,7 +156,7 @@ impl Simulator {
         handle
     }
 
-    fn build_quadtree(rb_vec_arc: Arc<RwLock<Vec<RigidBody2D>>>) -> QuadTree<'static, u32> {
+    fn build_quadtree(rb_vec_arc: Arc<RwLock<Vec<RigidBody2D>>>) -> QuadTree {
         let rb_vec_guard = rb_vec_arc.read().unwrap();
 
         let mut max_x = -f32::INFINITY;
@@ -171,10 +174,10 @@ impl Simulator {
         let w = max_x - min_x;
         let h = max_y - min_y;
         let boundary = BoundingBox2D::new(Vec2::new(min_x + 0.5 * w, min_y + 0.5 * h), w, h);
-        let mut quadtree = QuadTree::new(boundary.clone());
+        let mut quadtree = QuadTree::with_capacity(boundary.clone(), rb_vec_guard.len());
 
         for rb in rb_vec_guard.iter() {
-            quadtree.insert(None, rb.position, rb.mass);
+            quadtree.insert(rb.position, rb.mass);
         }
         quadtree
     }

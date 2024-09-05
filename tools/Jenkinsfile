@@ -20,6 +20,11 @@ pipeline {
                 sh "cargo clippy -- -Dwarnings"
             }
         }
+        stage('Test') {
+            steps {
+                sh "cargo test"
+            }
+        }
         stage('Benchmark') {
             steps {
                 sh "cargo bench"

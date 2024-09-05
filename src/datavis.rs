@@ -179,7 +179,6 @@ where
                     Arc::clone(&rb_arc),
                     Arc::clone(&spring_arc),
                     &camera,
-                    toggle_quadtree,
                 );
             }
         });
@@ -191,7 +190,6 @@ where
         rb_v: Arc<RwLock<Vec<RigidBody2D>>>,
         spring_v: Arc<RwLock<Vec<Spring>>>,
         camera: &Camera,
-        enable_quadtree: bool,
     ) {
         let mut target = display.draw();
         target.clear_color_and_depth((0.0, 0.0, 0.0, 1.0), 1.0);
@@ -229,9 +227,6 @@ where
             &uniforms,
             &params,
         );
-        if enable_quadtree {
-            draw::draw_quadtree(Arc::clone(&rb_v), &mut target, display, &uniforms, &params);
-        }
 
         target.finish().unwrap();
     }
@@ -248,7 +243,12 @@ where
             drop(toggle_sim_read_guard);
 
             if sim_toggle {
+                let sim_start = Instant::now();
                 sim.simulation_step(Arc::clone(&rb), Arc::clone(&spring));
+                println!(
+                    "Simulations Per Second: {}",
+                    1.0 / sim_start.elapsed().as_secs_f32()
+                )
             }
         });
     }
