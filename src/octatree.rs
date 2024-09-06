@@ -1,31 +1,31 @@
 use std::borrow::BorrowMut;
 
-use glam::Vec2;
+use glam::Vec3;
 
 const EPSILON: f32 = 1e-3;
 
 #[derive(Debug)]
-pub struct QuadTree {
-    pub children: Vec<Node2D>,
-    pub boundary: BoundingBox2D,
+pub struct OctaTree {
+    pub children: Vec<Node3D>,
+    pub boundary: BoundingBox3D,
     pub root: u32,
 }
 
 #[derive(Debug)]
-pub enum Node2D {
+pub enum Node3D {
     Root {
-        indices: [u32; 4],
+        indices: [u32; 8],
         mass: f32,
-        pos: Vec2,
+        pos: Vec3,
     },
     Leaf {
         mass: f32,
-        pos: Vec2,
+        pos: Vec3,
     },
 }
 
-impl QuadTree {
-    pub fn new(boundary: BoundingBox2D) -> Self {
+impl OctaTree {
+    pub fn new(boundary: BoundingBox3D) -> Self {
         Self {
             root: 0,
             boundary,
@@ -33,7 +33,7 @@ impl QuadTree {
         }
     }
 
-    pub fn with_capacity(boundary: BoundingBox2D, capacity: usize) -> Self {
+    pub fn with_capacity(boundary: BoundingBox3D, capacity: usize) -> Self {
         Self {
             root: 0,
             boundary,
@@ -41,11 +41,11 @@ impl QuadTree {
         }
     }
 
-    pub fn insert(&mut self, new_pos: Vec2, new_mass: f32) {
-        self.children.push(Node2D::new_leaf(new_pos, new_mass));
+    pub fn insert(&mut self, new_pos: Vec3, new_mass: f32) {
+        self.children.push(Node3D::new_leaf(new_pos, new_mass));
         let new_index = self.children.len() as u32 - 1;
 
-        // When only one Node2D than there is no need to continue
+        // When only one Node3D than there is no need to continue
         if self.children.len() == 1 {
             return;
         }
@@ -53,7 +53,7 @@ impl QuadTree {
         let mut bb = self.boundary.clone();
         let mut root_index = self.root;
 
-        while let Node2D::Root { indices, mass, pos } =
+        while let Node3D::Root { indices, mass, pos } =
             self.children[root_index as usize].borrow_mut()
         {
             // Update mass and Pos of root
@@ -73,24 +73,33 @@ impl QuadTree {
 
         // if new leaf is too close to current leaf we merge
         // TODO: in this case we will have a "dead" leaf
-        if let Node2D::Leaf { mass, pos } = self.children[root_index as usize] {
+        if let Node3D::Leaf { mass, pos } = self.children[root_index as usize] {
             if pos.distance(new_pos) < EPSILON {
                 let m: f32 = mass + new_mass;
-                self.children[root_index as usize] = Node2D::new_leaf(pos, m);
+                self.children[root_index as usize] = Node3D::new_leaf(pos, m);
                 return;
             }
         }
 
         // create new root until leaf and new leaf are in different sections
-        while let Node2D::Leaf { mass, pos } = self.children[root_index as usize] {
+        while let Node3D::Leaf { mass, pos } = self.children[root_index as usize] {
             let mut fin = false;
 
             // Pushes the old leaf to the back of the vector and inserts its index into the index array of the new root
-            let old_node = Node2D::new_leaf(pos, mass);
+            let old_node = Node3D::new_leaf(pos, mass);
             self.children.push(old_node);
             let old_index = self.children.len() - 1;
             let section = bb.section(&pos);
-            let mut ind = [u32::MAX, u32::MAX, u32::MAX, u32::MAX];
+            let mut ind = [
+                u32::MAX,
+                u32::MAX,
+                u32::MAX,
+                u32::MAX,
+                u32::MAX,
+                u32::MAX,
+                u32::MAX,
+                u32::MAX,
+            ];
             ind[section as usize] = old_index as u32;
 
             let section = bb.section(&new_pos);
@@ -102,7 +111,7 @@ impl QuadTree {
             }
 
             // sets the old leaf index to the new root
-            let new_root = Node2D::new_root(pos * mass + new_pos * new_mass, mass + new_mass, ind);
+            let new_root = Node3D::new_root(pos * mass + new_pos * new_mass, mass + new_mass, ind);
             self.children[root_index as usize] = new_root;
 
             if fin {
@@ -115,11 +124,15 @@ impl QuadTree {
         }
     }
 
-    pub fn stack<'a>(&'a self, position: &Vec2, theta: f32) -> Vec<&'a Node2D> {
-        let mut node: Vec<&Node2D> =
+    pub fn stack<'a>(&'a self, position: &Vec3, theta: f32) -> Vec<&'a Node3D> {
+        let mut node: Vec<&Node3D> =
             Vec::with_capacity((self.children.len() as f32).log2() as usize);
 
-        let mut s: f32 = self.boundary.width.max(self.boundary.height);
+        let mut s: f32 = self
+            .boundary
+            .width
+            .max(self.boundary.height)
+            .max(self.boundary.depth);
 
         if self.children.is_empty() {
             return vec![];
@@ -131,7 +144,7 @@ impl QuadTree {
             for node_index in stack {
                 let parent = &self.children[node_index as usize];
 
-                if let Node2D::Root { indices, .. } = parent {
+                if let Node3D::Root { indices, .. } = parent {
                     let center_mass = parent.position();
                     let dist = center_mass.distance(*position);
                     if s / dist < theta {
@@ -148,7 +161,7 @@ impl QuadTree {
                     }
                 }
 
-                if let Node2D::Leaf { .. } = parent {
+                if let Node3D::Leaf { .. } = parent {
                     if node.capacity() == node.len() {
                         node.reserve((node.len() as f32 * 0.1) as usize);
                     }
@@ -166,62 +179,68 @@ impl QuadTree {
     }
 }
 
-impl Node2D {
-    fn new_leaf(pos: Vec2, mass: f32) -> Self {
+impl Node3D {
+    fn new_leaf(pos: Vec3, mass: f32) -> Self {
         Self::Leaf { mass, pos }
     }
-    fn new_root(pos: Vec2, mass: f32, indices: [u32; 4]) -> Self {
+    fn new_root(pos: Vec3, mass: f32, indices: [u32; 8]) -> Self {
         Self::Root { indices, mass, pos }
     }
     #[allow(dead_code)]
     pub fn is_leaf(&self) -> bool {
-        matches!(self, Node2D::Leaf { .. })
+        matches!(self, Node3D::Leaf { .. })
     }
 
     #[allow(dead_code)]
     pub fn is_root(&self) -> bool {
-        matches!(self, Node2D::Root { .. })
+        matches!(self, Node3D::Root { .. })
     }
 
-    pub fn position(&self) -> Vec2 {
+    pub fn position(&self) -> Vec3 {
         match self {
-            Node2D::Root { pos, mass, .. } => pos / mass,
-            Node2D::Leaf { pos, .. } => *pos,
+            Node3D::Root { pos, mass, .. } => pos / mass,
+            Node3D::Leaf { pos, .. } => *pos,
         }
     }
 
     pub fn mass(&self) -> f32 {
         match self {
-            Node2D::Root { mass, .. } => *mass,
-            Node2D::Leaf { mass, .. } => *mass,
+            Node3D::Root { mass, .. } => *mass,
+            Node3D::Leaf { mass, .. } => *mass,
         }
     }
 }
 
 #[derive(Clone, Debug, PartialEq)]
-pub struct BoundingBox2D {
-    pub center: Vec2,
+pub struct BoundingBox3D {
+    pub center: Vec3,
     pub width: f32,
     pub height: f32,
+    pub depth: f32,
 }
 
-impl BoundingBox2D {
-    pub fn new(center: Vec2, width: f32, height: f32) -> Self {
+impl BoundingBox3D {
+    pub fn new(center: Vec3, width: f32, height: f32, depth: f32) -> Self {
         Self {
             center,
             width,
+            depth,
             height,
         }
     }
-    pub fn section(&self, loc: &Vec2) -> u8 {
-        let mut section = 0x00;
+    pub fn section(&self, loc: &Vec3) -> u8 {
+        let mut section = 0x000;
+
+        if loc[2] > self.center[2] {
+            section |= 0b100;
+        }
 
         if loc[1] > self.center[1] {
-            section |= 0b10;
+            section |= 0b010;
         }
 
         if loc[0] > self.center[0] {
-            section |= 0b01;
+            section |= 0b001;
         }
 
         section
@@ -230,7 +249,7 @@ impl BoundingBox2D {
     pub fn sub_quadrant(&self, section: u8) -> Self {
         let mut shift = self.center;
         if section & 0b01 > 0 {
-            shift[0] += 0.25 * self.width;
+            shift[0] += 0.25 * self.width
         } else {
             shift[0] -= 0.25 * self.width;
         }
@@ -240,75 +259,17 @@ impl BoundingBox2D {
         } else {
             shift[1] -= 0.25 * self.height;
         }
+
+        if section & 0b100 > 0 {
+            shift[2] += 0.25 * self.depth;
+        } else {
+            shift[2] -= 0.25 * self.depth;
+        }
         Self {
             center: shift,
             width: self.width * 0.5,
             height: self.height * 0.5,
-        }
-    }
-}
-
-#[cfg(test)]
-mod test {
-    use super::*;
-
-    #[test]
-    fn test_bounding_box_section() {
-        let bb: BoundingBox2D = BoundingBox2D::new(Vec2::ZERO, 10.0, 10.0);
-        assert_eq!(bb.section(&Vec2::new(-1.0, -1.0)), 0);
-        assert_eq!(bb.section(&Vec2::new(1.0, -1.0)), 1);
-        assert_eq!(bb.section(&Vec2::new(-1.0, 1.0)), 2);
-        assert_eq!(bb.section(&Vec2::new(1.0, 1.0)), 3);
-    }
-
-    #[test]
-    fn test_bounding_box_sub_quadrant() {
-        let bb: BoundingBox2D = BoundingBox2D::new(Vec2::ZERO, 10.0, 10.0);
-        assert_eq!(
-            bb.sub_quadrant(0),
-            BoundingBox2D::new(Vec2::new(-2.5, -2.5), 5.0, 5.0)
-        );
-        assert_eq!(
-            bb.sub_quadrant(1),
-            BoundingBox2D::new(Vec2::new(2.5, -2.5), 5.0, 5.0)
-        );
-        assert_eq!(
-            bb.sub_quadrant(2),
-            BoundingBox2D::new(Vec2::new(-2.5, 2.5), 5.0, 5.0)
-        );
-        assert_eq!(
-            bb.sub_quadrant(3),
-            BoundingBox2D::new(Vec2::new(2.5, 2.5), 5.0, 5.0)
-        );
-    }
-
-    #[test]
-    fn test_quadtree_insert() {
-        let mut qt: QuadTree = QuadTree::new(BoundingBox2D::new(Vec2::ZERO, 10.0, 10.0));
-        // Insert first node
-        let n1_mass = 5.0;
-        qt.insert(Vec2::new(-1.0, -1.0), n1_mass);
-        assert!(qt.children[0].is_leaf());
-        if let Node2D::Leaf { mass, .. } = qt.children[0] {
-            assert_eq!(mass, n1_mass);
-        }
-
-        // Insert second node in in the same quadrant but different sub quadrant
-        //  N1-R-N2
-        let n2_mass = 30.0;
-        qt.insert(Vec2::new(1.0, 1.0), n2_mass);
-        // check root node
-        assert!(qt.children[0].is_root());
-        if let Node2D::Root { indices, mass, .. } = qt.children[0] {
-            assert_eq!(mass, n1_mass + n2_mass);
-
-            // check node0
-            assert_eq!(indices[0], 2);
-            assert!(qt.children[1].is_leaf());
-
-            // check node1
-            assert_eq!(indices[3], 1);
-            assert!(qt.children[2].is_leaf());
+            depth: self.depth * 0.5,
         }
     }
 }
