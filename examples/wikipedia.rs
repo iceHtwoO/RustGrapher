@@ -1,7 +1,8 @@
 extern crate glium;
+extern crate grapher;
 extern crate winit;
 
-use grapher::datavis::DataVis;
+use grapher::renderer::Renderer;
 use grapher::simulator::SimulatorBuilder;
 use petgraph::Directed;
 use petgraph::Graph;
@@ -36,7 +37,7 @@ fn main() {
         .delta_time(0.01)
         .freeze_threshold(-1.0)
         .build();
-    let datavis = DataVis::new(simulator);
+    let datavis = Renderer::new(simulator);
     datavis.create_window(g);
 }
 
@@ -79,7 +80,7 @@ fn graph_wiki(g: &mut Graph<Data, u32, Directed, u32>) {
 }
 
 fn load_wiki() -> Result<Vec<WikiEntry>, Error> {
-    let file = File::open("reference.json")?;
+    let file = File::open("examples/reference.json")?;
     let reader = BufReader::new(file);
 
     let wiki: Vec<WikiEntry> = serde_json::from_reader(reader)?;

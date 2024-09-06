@@ -37,7 +37,7 @@ struct Vertex {
 }
 implement_vertex!(Vertex, position, color);
 
-pub struct DataVis<T, E>
+pub struct Renderer<T, E>
 where
     T: PartialEq + Send + Sync + 'static + Clone,
 {
@@ -47,7 +47,7 @@ where
     mass_incoming: bool,
 }
 
-impl<T, E> DataVis<T, E>
+impl<T, E> Renderer<T, E>
 where
     T: PartialEq + Send + Sync + 'static + Clone + Debug + Default,
     E: 'static,
@@ -243,12 +243,7 @@ where
             drop(toggle_sim_read_guard);
 
             if sim_toggle {
-                let sim_start = Instant::now();
                 sim.simulation_step(Arc::clone(&rb), Arc::clone(&spring));
-                println!(
-                    "Simulations Per Second: {}",
-                    1.0 / sim_start.elapsed().as_secs_f32()
-                )
             }
         });
     }

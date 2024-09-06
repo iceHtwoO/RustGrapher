@@ -126,7 +126,7 @@ impl QuadTree {
         }
 
         let mut stack: Vec<u32> = vec![0];
-        let mut new_stack: Vec<u32> = vec![];
+        let mut new_stack: Vec<u32> = Vec::with_capacity(2);
         'outer: loop {
             for node_index in stack {
                 let parent = &self.children[node_index as usize];
@@ -160,7 +160,7 @@ impl QuadTree {
             }
             s *= 0.5;
             stack = new_stack;
-            new_stack = Vec::with_capacity(stack.len() * 2);
+            new_stack = Vec::with_capacity(stack.len() * 4);
         }
         nodes
     }

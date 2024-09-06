@@ -1,1 +1,1 @@
-cargo flamegraph
+cargo flamegraph --example wikipedia
