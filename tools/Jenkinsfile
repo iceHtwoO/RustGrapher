@@ -15,19 +15,43 @@ pipeline {
                 sh "cargo build --release"
             }
         }
-        stage('Lint') {
-            steps {
-                sh "cargo clippy -- -Dwarnings"
-            }
-        }
-        stage('Test') {
-            steps {
-                sh "cargo test"
+        stage('Lint and Test') {
+            parallel {
+                stage('Lint') {
+                    steps {
+                        sh "cargo clippy -- -Dwarnings"
+                    }
+                }
+                stage('Test') {
+                    steps {
+                        sh "cargo test"
+                    }
+                }
+                stage('Docs') {
+                    steps {
+                        sh "cargo doc"
+                    }
+                }
+                stage('Publish Dry Run') {
+                    steps {
+                        sh "cargo publish --dry-run"
+                    }
+                }
             }
         }
         stage('Benchmark') {
             steps {
                 sh "cargo bench"
+            }
+        }
+        stage('Publish') {
+            when {
+                buildingTag()
+            }
+            steps {
+                withCredentials([string(credentialsId: 'crates_io', variable: 'KEY')]) {
+                    sh 'cargo publish --token $KEY'
+                }
             }
         }
     }

@@ -298,7 +298,7 @@ impl SimulatorBuilder {
         self
     }
 
-    /// If edges should be globally pulled to the center of the canvas
+    /// If nodes should be globally pulled to the center of the canvas
     pub fn gravity(mut self, gravity: bool) -> Self {
         self.gravity = gravity;
         self

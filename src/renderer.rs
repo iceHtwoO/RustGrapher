@@ -43,6 +43,7 @@ struct Vertex {
 }
 implement_vertex!(Vertex, position, color);
 
+/// Renders a petgraph `StableGraph`
 pub struct Renderer<T, E>
 where
     T: PartialEq + Send + Sync + 'static + Clone,
@@ -58,6 +59,7 @@ where
     T: PartialEq + Send + Sync + 'static + Clone + Debug + Default,
     E: 'static,
 {
+    /// Creates a instance of the `Renderer`
     pub fn new(simulator: Simulator) -> Self {
         Self {
             simulator,
@@ -67,6 +69,7 @@ where
         }
     }
 
+    /// Creates a window and renders all the nodes and edges of given stable graph
     pub fn create_window(self, g: StableGraph<T, E, Directed, u32>) {
         let event_loop = winit::event_loop::EventLoopBuilder::new().build();
 
