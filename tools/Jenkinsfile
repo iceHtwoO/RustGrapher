@@ -1,9 +1,9 @@
 pipeline {
-  agent {
-    docker {
-      image 'rust:latest'
+    agent {
+        docker {
+            image 'rust:latest'
+        }
     }
-  }
     stages {
         stage('Setup') {
             steps {
