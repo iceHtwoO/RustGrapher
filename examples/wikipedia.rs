@@ -30,15 +30,19 @@ struct WikiEntry {
 }
 
 fn main() {
+    // Construct the PetGraph
     let mut g: Graph<Data, u32> = Graph::new();
-
     graph_wiki(&mut g);
+
+    // Configure the Simulator
     let simulator = SimulatorBuilder::new()
         .delta_time(0.01)
         .freeze_threshold(-1.0)
-        .build();
+        .build(g.into());
+
+    // Render Graph
     let renderer = Renderer::new(simulator);
-    renderer.create_window(g.into());
+    renderer.create_window();
 }
 
 fn graph_wiki(g: &mut Graph<Data, u32, Directed, u32>) {

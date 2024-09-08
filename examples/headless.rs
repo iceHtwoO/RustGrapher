@@ -2,7 +2,6 @@ extern crate glium;
 extern crate grapher;
 extern crate winit;
 
-use grapher::renderer::Renderer;
 use grapher::simulator::SimulatorBuilder;
 use petgraph::Directed;
 
@@ -18,7 +17,8 @@ fn main() {
         .freeze_threshold(-1.0)
         .build(graph.into());
 
-    // Start the renderer
-    let renderer = Renderer::new(simulator);
-    renderer.create_window();
+    // Run 10k simulation steps
+    for _ in 0..10000 {
+        simulator.simulation_step();
+    }
 }

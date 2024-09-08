@@ -1,10 +1,7 @@
 use core::f32;
-use std::{
-    f32::consts::PI,
-    sync::{Arc, RwLock},
-};
+use std::{f32::consts::PI, sync::Arc};
 
-use crate::properties::{RigidBody2D, Spring};
+use crate::simulator::Simulator;
 use glium::{
     glutin::surface::WindowSurface,
     uniforms::{AsUniformValue, Uniforms, UniformsStorage},
@@ -43,8 +40,7 @@ void main() {
 "#;
 
 pub fn draw_edge<H, R>(
-    rb_v: Arc<RwLock<Vec<RigidBody2D>>>,
-    spring_v: Arc<RwLock<Vec<Spring>>>,
+    sim: Arc<Simulator>,
     target: &mut Frame,
     display: &Display<WindowSurface>,
     max_m: &f32,
@@ -59,8 +55,8 @@ pub fn draw_edge<H, R>(
 
     let mut shape: Vec<Vertex> = vec![];
 
-    let spring_read_guard = spring_v.read().unwrap();
-    let rb_read_guard = rb_v.read().unwrap();
+    let spring_read_guard = sim.springs.read().unwrap();
+    let rb_read_guard = sim.rigid_bodies.read().unwrap();
 
     for edge in spring_read_guard.iter() {
         let rb1 = &rb_read_guard[edge.rb1];
@@ -90,7 +86,7 @@ pub fn draw_edge<H, R>(
 }
 
 pub fn draw_node<H, R>(
-    rb_v: Arc<RwLock<Vec<RigidBody2D>>>,
+    sim: Arc<Simulator>,
     target: &mut Frame,
     display: &Display<WindowSurface>,
     max_m: &f32,
@@ -104,7 +100,7 @@ pub fn draw_node<H, R>(
         glium::Program::from_source(display, VERTEX_SHADER_SRC, FRAGMENT_SHADER_SRC, None).unwrap();
 
     let mut shape: Vec<Vertex> = vec![];
-    let graph_read_guard = rb_v.read().unwrap();
+    let graph_read_guard = sim.rigid_bodies.read().unwrap();
 
     for (e, rb) in graph_read_guard.iter().enumerate() {
         let pos = [rb.position[0], rb.position[1], -0.2];

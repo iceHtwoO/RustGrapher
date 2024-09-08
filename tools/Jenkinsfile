@@ -39,11 +39,6 @@ pipeline {
                 }
             }
         }
-        stage('Benchmark') {
-            steps {
-                sh "cargo bench"
-            }
-        }
         stage('Publish') {
             when {
                 buildingTag()
