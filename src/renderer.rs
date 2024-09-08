@@ -10,8 +10,8 @@ use std::{
 
 use crate::simulator::Simulator;
 use camera::Camera;
-use glam::{Mat4, Vec3};
-use glium::{glutin::surface::WindowSurface, implement_vertex, uniform, Display, Frame, Surface};
+use glam::{Mat4, Vec2, Vec3};
+use glium::{glutin::surface::WindowSurface, implement_vertex, uniform, Display, Surface};
 
 use winit::{
     event::{ElementState, Event, WindowEvent},
@@ -81,6 +81,7 @@ impl Renderer {
         let display_rc = Rc::new(display);
 
         let mut keys_held = HashSet::new();
+        let mut cursor_pos = Vec2::ZERO;
 
         event_loop.run(move |event, _, control_flow| {
             *control_flow = ControlFlow::Poll;
@@ -106,6 +107,10 @@ impl Renderer {
                         }
                         _ => (),
                     },
+                    WindowEvent::CursorMoved { position, .. } => {
+                        cursor_pos[0] = position.x as f32;
+                        cursor_pos[1] = position.y as f32;
+                    }
                     WindowEvent::KeyboardInput { input, .. } => match input.virtual_keycode {
                         Some(winit::event::VirtualKeyCode::Space) => {
                             if last_pause.elapsed().as_millis() >= 400 {
@@ -153,8 +158,7 @@ impl Renderer {
 
             if last_redraw.elapsed().as_millis() >= 34 {
                 last_redraw = Instant::now();
-
-                self_mutex.draw_graph(&display_rc, Arc::clone(&sim), &camera);
+                self_mutex.draw_graph(&display_rc, Arc::clone(&sim), &camera, &window);
             }
         });
     }
@@ -164,6 +168,7 @@ impl Renderer {
         display: &Display<WindowSurface>,
         sim: Arc<Simulator>,
         camera: &Camera,
+        window: &Window,
     ) {
         let mut target = display.draw();
         target.clear_color_and_depth((0.0, 0.0, 0.0, 1.0), 1.0);
@@ -171,8 +176,8 @@ impl Renderer {
         let max_mass = { sim.max_node_mass() };
 
         let uniforms = uniform! {
-            matrix: camera.matrix(),
-            projection: build_perspective_matrix(&target).to_cols_array_2d()
+            matrix: camera.matrix().to_cols_array_2d(),
+            projection: build_perspective_matrix(window).to_cols_array_2d()
         };
 
         let params = glium::DrawParameters {
@@ -219,7 +224,8 @@ impl Renderer {
     }
 }
 
-fn build_perspective_matrix(target: &Frame) -> Mat4 {
-    let (width, height) = target.get_dimensions();
-    Mat4::perspective_infinite_lh(0.8, width as f32 / height as f32, 0.1)
+fn build_perspective_matrix(window: &Window) -> Mat4 {
+    let width = window.inner_size().width;
+    let height = window.inner_size().height;
+    Mat4::perspective_infinite_rh(0.8, width as f32 / height as f32, 0.1)
 }

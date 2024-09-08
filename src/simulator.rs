@@ -40,6 +40,26 @@ impl Simulator {
         SimulatorBuilder::default()
     }
 
+    pub fn average_node_position(&self) -> Vec2 {
+        let rb_guard = self.rigid_bodies.read().unwrap();
+
+        let mut avg = Vec2::ZERO;
+        for rb in rb_guard.iter() {
+            avg += rb.position;
+        }
+
+        avg / rb_guard.len() as f32
+    }
+
+    pub fn max_node_mass(&self) -> f32 {
+        let graph_read_guard = self.rigid_bodies.read().unwrap();
+        let mut max_m = 0.0;
+        for rb in graph_read_guard.iter() {
+            max_m = rb.mass.max(max_m);
+        }
+        max_m
+    }
+
     pub fn simulation_step(&self) {
         let f_vec = Arc::new(Mutex::new(vec![
             Vec2::ZERO;
@@ -224,26 +244,6 @@ impl Simulator {
 
     fn compute_center_gravity(gravity_force: f32, node: &RigidBody2D) -> Vec2 {
         -node.position * node.mass * gravity_force
-    }
-
-    pub fn average_node_position(&self) -> Vec2 {
-        let rb_guard = self.rigid_bodies.read().unwrap();
-
-        let mut avg = Vec2::ZERO;
-        for rb in rb_guard.iter() {
-            avg += rb.position;
-        }
-
-        avg / rb_guard.len() as f32
-    }
-
-    pub fn max_node_mass(&self) -> f32 {
-        let graph_read_guard = self.rigid_bodies.read().unwrap();
-        let mut max_m = 0.0;
-        for rb in graph_read_guard.iter() {
-            max_m = rb.mass.max(max_m);
-        }
-        max_m
     }
 }
 
