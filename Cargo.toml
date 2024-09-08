@@ -18,10 +18,10 @@ exclude = [
 
 [dependencies]
 glam = "0.29.0"
-glium = "0.35.0"
+glium = "0.33"
 petgraph = "0.6.5"
 rand = "0.8.5"
-winit = { version = "0.28"}
+winit = { version = "0.28.7"}
 
 [[example]]
 name = "wikipedia"
