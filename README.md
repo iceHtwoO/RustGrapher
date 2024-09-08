@@ -25,3 +25,15 @@ Using a k-d Tree(Quadtree) the Barnes-Hut algorithm groups far away nodes and on
 ## Performance
 
 On a Ryzen 7 3700X the library can calculate 2000 simulation steps per second at 1000 Nodes. (Using 16 Physics threads)
+
+## Controls
+
+- `return` - Centers the camera on the average poisson of all nodes.
+- `Space` - Start/Pause simulation
+- `Scroll Wheel` - Zoom in or out
+- `W`, `A`, `S` and `D` - to move the camera
+
+## Examples
+
+- [Basic Barabasi Albert Graph](examples/basic.rs)
+- [Section of Wikipedia Graph](examples/wikipedia.rs)

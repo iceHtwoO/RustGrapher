@@ -37,8 +37,8 @@ fn main() {
         .delta_time(0.01)
         .freeze_threshold(-1.0)
         .build();
-    let datavis = Renderer::new(simulator);
-    datavis.create_window(g);
+    let renderer = Renderer::new(simulator);
+    renderer.create_window(g.into());
 }
 
 fn graph_wiki(g: &mut Graph<Data, u32, Directed, u32>) {

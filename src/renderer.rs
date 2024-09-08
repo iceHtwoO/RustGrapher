@@ -1,5 +1,6 @@
 use core::f32;
 use std::{
+    collections::HashSet,
     fmt::Debug,
     marker::PhantomData,
     rc::Rc,
@@ -16,10 +17,14 @@ use camera::Camera;
 use glam::{Mat4, Vec2, Vec3};
 use glium::{glutin::surface::WindowSurface, implement_vertex, uniform, Display, Frame, Surface};
 
-use petgraph::{Directed, Graph};
+use petgraph::{
+    prelude::StableGraph,
+    visit::{EdgeRef, IntoEdgeReferences},
+    Directed,
+};
 use rand::Rng;
 use winit::{
-    event::{Event, WindowEvent},
+    event::{ElementState, Event, WindowEvent},
     event_loop::{ControlFlow, EventLoop},
     window::Window,
 };
@@ -29,6 +34,7 @@ mod draw;
 mod shapes;
 
 const SCROLL_SENSITIVITY: f32 = 2.0;
+const CAMERA_MOVEMENT_SENSITIVITY: f32 = 40.0;
 
 #[derive(Copy, Clone, Debug)]
 struct Vertex {
@@ -61,7 +67,7 @@ where
         }
     }
 
-    pub fn create_window(self, g: Graph<T, E, Directed, u32>) {
+    pub fn create_window(self, g: StableGraph<T, E, Directed, u32>) {
         let event_loop = winit::event_loop::EventLoopBuilder::new().build();
 
         let (window, display) =
@@ -70,25 +76,24 @@ where
         self.run_render_loop(g, event_loop, display, window);
     }
 
+    #[allow(unused_variables)]
     fn run_render_loop(
         self,
-        graph: Graph<T, E, Directed, u32>,
+        graph: StableGraph<T, E, Directed, u32>,
         event_loop: EventLoop<()>,
         display: Display<WindowSurface>,
         window: Window,
     ) {
         //Timing
         let mut last_redraw = Instant::now();
+        let mut last_event_cycle = Instant::now();
         let mut last_pause = Instant::now();
         // Camera
         let mut camera = Camera::new(Vec3::new(0.0, 0.0, 5.0));
         camera.look_at(&Vec3::ZERO);
 
-        let mut cursor = winit::dpi::PhysicalPosition::new(0.0, 0.0);
-
         //Config
         let toggle_sim = Arc::new(RwLock::new(false));
-        let mut toggle_quadtree = false;
 
         let sim = self.simulator.clone();
 
@@ -99,6 +104,8 @@ where
         let self_arc = Arc::new(Mutex::new(self));
         let display_rc = Rc::new(display);
 
+        let mut keys_held = HashSet::new();
+
         Self::spawn_simulation_thread(
             Arc::clone(&toggle_sim),
             sim,
@@ -108,6 +115,9 @@ where
 
         event_loop.run(move |event, _, control_flow| {
             *control_flow = ControlFlow::Poll;
+
+            let delta_time = last_event_cycle.elapsed().as_secs_f32();
+            last_event_cycle = Instant::now();
 
             #[allow(clippy::single_match)]
             #[allow(clippy::collapsible_match)]
@@ -127,9 +137,6 @@ where
                         }
                         _ => (),
                     },
-                    WindowEvent::CursorMoved { position, .. } => {
-                        cursor = position;
-                    }
                     WindowEvent::KeyboardInput { input, .. } => match input.virtual_keycode {
                         Some(winit::event::VirtualKeyCode::Space) => {
                             if last_pause.elapsed().as_millis() >= 400 {
@@ -143,13 +150,15 @@ where
                             camera.position[0] = avg[0];
                             camera.position[1] = avg[1];
                         }
-                        Some(winit::event::VirtualKeyCode::Q) => {
-                            if last_pause.elapsed().as_millis() >= 400 {
-                                toggle_quadtree = !toggle_quadtree;
-                                last_pause = Instant::now()
+                        Some(keycode) => match input.state {
+                            ElementState::Pressed => {
+                                keys_held.insert(keycode);
                             }
-                        }
-                        _ => (),
+                            ElementState::Released => {
+                                keys_held.remove(&keycode);
+                            }
+                        },
+                        None => (),
                     },
                     _ => (),
                 },
@@ -159,20 +168,22 @@ where
             let self_arc_clone = Arc::clone(&self_arc);
             let mut self_mutex = self_arc_clone.lock().unwrap();
 
+            // Camera movement
+            if keys_held.contains(&winit::event::VirtualKeyCode::W) {
+                camera.position[1] += CAMERA_MOVEMENT_SENSITIVITY * delta_time;
+            }
+            if keys_held.contains(&winit::event::VirtualKeyCode::S) {
+                camera.position[1] -= CAMERA_MOVEMENT_SENSITIVITY * delta_time;
+            }
+            if keys_held.contains(&winit::event::VirtualKeyCode::A) {
+                camera.position[0] -= CAMERA_MOVEMENT_SENSITIVITY * delta_time;
+            }
+            if keys_held.contains(&winit::event::VirtualKeyCode::D) {
+                camera.position[0] += CAMERA_MOVEMENT_SENSITIVITY * delta_time;
+            }
+
             if last_redraw.elapsed().as_millis() >= 34 {
                 last_redraw = Instant::now();
-
-                let camera_factor: f32 = 1.0;
-                if cursor.x < window.inner_size().width as f64 * 0.1 {
-                    camera.position[0] -= camera_factor;
-                } else if cursor.x > window.inner_size().width as f64 * 0.9 {
-                    camera.position[0] += camera_factor;
-                }
-                if cursor.y < window.inner_size().height as f64 * 0.1 {
-                    camera.position[1] += camera_factor;
-                } else if cursor.y > window.inner_size().height as f64 * 0.9 {
-                    camera.position[1] -= camera_factor;
-                }
 
                 self_mutex.draw_graph(
                     &display_rc,
@@ -257,13 +268,14 @@ where
         max_m
     }
 
-    fn build_rb_vec(&self, graph: Graph<T, E, Directed, u32>) -> (Vec<RigidBody2D>, Vec<Spring>) {
+    fn build_rb_vec(
+        &self,
+        graph: StableGraph<T, E, Directed, u32>,
+    ) -> (Vec<RigidBody2D>, Vec<Spring>) {
         let mut vec_rb = vec![];
         let mut vec_spring = vec![];
 
-        let (nodes, edges) = graph.into_nodes_edges();
-
-        for _ in nodes {
+        for _ in 0..graph.node_count() {
             vec_rb.push(RigidBody2D::new(
                 Vec2::new(
                     rand::thread_rng().gen_range(-60.0..60.0),
@@ -272,6 +284,8 @@ where
                 1.0,
             ));
         }
+
+        let edges = graph.edge_references();
 
         for s in edges {
             if self.mass_incoming {
