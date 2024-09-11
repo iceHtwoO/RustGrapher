@@ -1,13 +1,7 @@
 # RustGrapher
 
-A library to simulate and visualize a [force directed graph](https://en.wikipedia.org/wiki/Force-directed_graph_drawing) in rust.
+A library to simulate and visualize a 2D [force directed graph](https://en.wikipedia.org/wiki/Force-directed_graph_drawing) in rust.
 ![plot](./example_images/example.gif)
-
-The initial goal of this project was to render a graph of all nodes in wikipedia now it has transformed into a library for visualizing graphs.
-
-Currently `RustGrapher` doesn't utilize the GPU for it's calculations but it's planned for future updates.
-
-The library only supports 2D graphs. (For now)
 
 ## Algorithms
 
@@ -29,8 +23,8 @@ On a Ryzen 7 3700X the library can calculate 2000 simulation steps per second at
 ## Controls
 
 - `return` - Centers the camera on the average poisson of all nodes.
-- `Space` - Start/Pause simulation
-- `Scroll Wheel` - Zoom in or out
+- `space` - Start/Pause simulation
+- `scroll wheel` - Zoom in or out
 - `W`, `A`, `S` and `D` - to move the camera
 
 ## Usage
@@ -56,3 +50,5 @@ On a Ryzen 7 3700X the library can calculate 2000 simulation steps per second at
 
 - [Basic Barabasi Albert Graph](examples/basic.rs)
 - [Section of Wikipedia Graph](examples/wikipedia.rs)
+- [Headless Grpah](examples/headless.rs)
+
