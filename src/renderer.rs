@@ -8,9 +8,9 @@ use std::{
     time::Instant,
 };
 
-use crate::simulator::Simulator;
+use crate::{properties::RigidBody2D, simulator::Simulator};
 use camera::Camera;
-use glam::{Mat4, Vec2, Vec3};
+use glam::{Mat4, Vec2, Vec3, Vec4};
 use glium::{glutin::surface::WindowSurface, implement_vertex, uniform, Display, Surface};
 
 use winit::{
@@ -81,6 +81,8 @@ impl Renderer {
         let display_rc = Rc::new(display);
 
         let mut keys_held = HashSet::new();
+        let mut mouse_held = HashSet::new();
+        let mut prev_cursor_pos = Vec2::ZERO;
         let mut cursor_pos = Vec2::ZERO;
 
         event_loop.run(move |event, _, control_flow| {
@@ -107,7 +109,21 @@ impl Renderer {
                         }
                         _ => (),
                     },
+                    WindowEvent::MouseInput {
+                        device_id,
+                        state,
+                        button,
+                        modifiers,
+                    } => match state {
+                        ElementState::Pressed => {
+                            mouse_held.insert(button);
+                        }
+                        ElementState::Released => {
+                            mouse_held.remove(&button);
+                        }
+                    },
                     WindowEvent::CursorMoved { position, .. } => {
+                        prev_cursor_pos = cursor_pos;
                         cursor_pos[0] = position.x as f32;
                         cursor_pos[1] = position.y as f32;
                     }
@@ -159,6 +175,7 @@ impl Renderer {
             if last_redraw.elapsed().as_millis() >= 34 {
                 last_redraw = Instant::now();
                 self_mutex.draw_graph(&display_rc, Arc::clone(&sim), &camera, &window);
+                to_world_coords(&window, &camera, &cursor_pos);
             }
         });
     }
@@ -228,4 +245,35 @@ fn build_perspective_matrix(window: &Window) -> Mat4 {
     let width = window.inner_size().width;
     let height = window.inner_size().height;
     Mat4::perspective_infinite_rh(0.8, width as f32 / height as f32, 0.1)
+}
+
+fn does_vector_intersect_circle(vec: Vec2, rb: RigidBody2D, rad: f32) {}
+
+fn to_world_coords(window: &Window, camera: &Camera, view_space_coordinate: &Vec2) {
+    let clip_ray = calculate_mouse_ray(window, view_space_coordinate);
+    let mut x = build_perspective_matrix(window).inverse() * clip_ray;
+    x[2] = 1.0;
+    x[3] = 0.0;
+    println!("Before:{:?}", x);
+    x = camera.matrix().inverse() * x;
+    println!("{:?}", x.normalize());
+    println!("{:?}", camera.position);
+}
+
+fn calculate_mouse_ray(window: &Window, view_space_coordinate: &Vec2) -> Vec4 {
+    let normalized_view_space = normalize_view_space(window, view_space_coordinate);
+    Vec4::new(normalized_view_space[0], normalized_view_space[1], 1.0, 1.0)
+}
+
+// -1 <= 2x/xm-1 <= 1
+fn normalize_view_space(window: &Window, view_space_coordinate: &Vec2) -> Vec2 {
+    let width = window.inner_size().width;
+    let height = window.inner_size().height;
+
+    let mut normalized_view_space = view_space_coordinate * 2.0;
+
+    normalized_view_space[0] /= width as f32;
+    normalized_view_space[1] /= height as f32;
+
+    normalized_view_space - 1.0
 }
