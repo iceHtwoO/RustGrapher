@@ -92,6 +92,7 @@ pub fn draw_node<H, R>(
     max_m: &f32,
     uniform: &UniformsStorage<H, R>,
     params: &DrawParameters,
+    highlight_index: Vec<u32>,
 ) where
     H: AsUniformValue,
     R: Uniforms,
@@ -107,10 +108,17 @@ pub fn draw_node<H, R>(
         let r = f32::sqrt(rb.mass * PI) * 0.1;
 
         let mut rand = StdRng::seed_from_u64(e as u64);
+
+        let mut highlight_mul = 1.0;
+
+        if !highlight_index.is_empty() && !highlight_index.contains(&(e as u32)) {
+            highlight_mul = 0.5;
+        }
+
         let color = [
-            (rand.gen_range(10..=100) as f32) / 100.0,
-            (rand.gen_range(10..=100) as f32) / 100.0,
-            (rand.gen_range(10..=100) as f32) / 100.0,
+            (rand.gen_range(10..=100) as f32) / 100.0 * highlight_mul,
+            (rand.gen_range(10..=100) as f32) / 100.0 * highlight_mul,
+            (rand.gen_range(10..=100) as f32) / 100.0 * highlight_mul,
             rb.mass / max_m,
         ];
 

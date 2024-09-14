@@ -38,17 +38,4 @@ impl Camera {
             [px, py, pz, 1.0],
         ])
     }
-
-    pub fn rotate_y_around_point(&mut self, point: Vec3, angle_in_rads: f32) {
-        let s = angle_in_rads.sin();
-        let c = angle_in_rads.cos();
-        self.position -= point;
-
-        let new_pos = Vec3::new(
-            self.position.x * c - self.position.z * s,
-            self.position.y,
-            self.position.x * c + self.position.z * s,
-        );
-        self.position = new_pos + point;
-    }
 }

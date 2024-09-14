@@ -173,6 +173,7 @@ impl Renderer {
                 camera.position[0] += CAMERA_MOVEMENT_SENSITIVITY * delta_time;
             }
 
+            let mut highlight_index = vec![];
             if let Some(value) = mouse_held.get_mut(&winit::event::MouseButton::Left) {
                 let v = cursor_pos_to_world_vec(&window, &camera, &cursor_pos);
                 let v =
@@ -185,12 +186,19 @@ impl Renderer {
 
                 if let Some(index) = selected_node {
                     sim.set_node_location_by_index(v, index);
+                    highlight_index.push(index);
                 }
             }
 
             if last_redraw.elapsed().as_millis() >= 34 {
                 last_redraw = Instant::now();
-                self_mutex.draw_graph(&display_rc, Arc::clone(&sim), &camera, &window);
+                self_mutex.draw_graph(
+                    &display_rc,
+                    Arc::clone(&sim),
+                    &camera,
+                    &window,
+                    highlight_index,
+                );
             }
         });
     }
@@ -201,6 +209,7 @@ impl Renderer {
         sim: Arc<Simulator>,
         camera: &Camera,
         window: &Window,
+        highlight_index: Vec<u32>,
     ) {
         let mut target = display.draw();
         target.clear_color_and_depth((0.0, 0.0, 0.0, 1.0), 1.0);
@@ -236,6 +245,7 @@ impl Renderer {
             &max_mass,
             &uniforms,
             &params,
+            highlight_index,
         );
 
         target.finish().unwrap();
