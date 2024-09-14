@@ -8,6 +8,8 @@ A library to simulate and visualize a 2D [force directed graph](https://en.wikip
 - Render PetGraphs in 2D
 - Physics based positioning via a Force Directed Graph
 - Drag Nodes to a new position
+- Place new nodes
+- WIP: Build graphs using the UI
 
 ## Algorithms
 
@@ -33,6 +35,7 @@ On a Ryzen 7 3700X the library can calculate 2000 simulation steps per second at
 - `scroll wheel` - Zoom in or out
 - `W`, `A`, `S` and `D` - to move the camera
 - `Click` and `drag` - move nodes
+- `P` - switch from drag to node place(only works while simulation is paused)
 
 ## Usage
 

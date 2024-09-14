@@ -19,6 +19,8 @@ use crate::{
 
 #[derive(Clone, Debug)]
 pub struct Simulator {
+    pub rigid_bodies: Arc<RwLock<Vec<RigidBody2D>>>,
+    pub springs: Arc<RwLock<Vec<Spring>>>,
     repel: bool,
     spring: bool,
     gravity: bool,
@@ -31,8 +33,7 @@ pub struct Simulator {
     quadtree_theta: f32,
     freeze_thresh: f32,
     max_threads: u32,
-    pub rigid_bodies: Arc<RwLock<Vec<RigidBody2D>>>,
-    pub springs: Arc<RwLock<Vec<Spring>>>,
+    simulation_thread_lock: Arc<RwLock<bool>>,
 }
 
 impl Simulator {
@@ -61,11 +62,16 @@ impl Simulator {
     }
 
     pub fn insert_node(&self, vec: Vec3) {
+        let _lock = self.simulation_thread_lock.write().unwrap();
+
         let mut rb = self.rigid_bodies.write().unwrap();
         rb.push(RigidBody2D::new(vec.xy(), 5.0));
     }
 
     pub fn simulation_step(&self) {
+        // Lock so actions can only be performed when sim step has ended
+        let _lock = self.simulation_thread_lock.write().unwrap();
+
         let f_vec = Arc::new(Mutex::new(vec![
             Vec2::ZERO;
             self.rigid_bodies.read().unwrap().len()
@@ -498,6 +504,7 @@ impl SimulatorBuilder {
     {
         let (rigid_bodies, springs) = build_property_vec(graph, self.edge_based_mass);
         Simulator {
+            simulation_thread_lock: Arc::new(RwLock::new(true)),
             repel: self.repel,
             spring: self.spring,
             gravity: self.gravity,

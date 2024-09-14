@@ -1,6 +1,5 @@
 use core::f32;
 use std::{
-    collections::{HashMap, HashSet},
     fmt::Debug,
     rc::Rc,
     sync::{Arc, Mutex, RwLock},
@@ -10,6 +9,7 @@ use std::{
 
 use crate::simulator::Simulator;
 use camera::Camera;
+use event::EventManager;
 use glam::{Mat4, Vec2, Vec3, Vec4, Vec4Swizzles};
 use glium::{glutin::surface::WindowSurface, implement_vertex, uniform, Display, Surface};
 
@@ -22,6 +22,7 @@ use winit::{
 
 mod camera;
 mod draw;
+mod event;
 mod shapes;
 
 const SCROLL_SENSITIVITY: f32 = 2.0;
@@ -32,6 +33,7 @@ struct Vertex {
     position: [f32; 3],
     color: [f32; 4],
 }
+
 implement_vertex!(Vertex, position, color);
 
 /// Renders a petgraph `StableGraph`
@@ -64,7 +66,7 @@ impl Renderer {
         display: Display<WindowSurface>,
         window: Window,
     ) {
-        //Timing
+        // Timing
         let mut last_redraw = Instant::now();
         let mut last_event_cycle = Instant::now();
         let mut last_pause = Instant::now();
@@ -81,11 +83,13 @@ impl Renderer {
         let self_arc = Arc::new(Mutex::new(self));
         let display_rc = Rc::new(display);
 
-        let mut keys_held = HashSet::new();
-        let mut mouse_held = HashMap::new();
+        let mut event_manager = EventManager::new();
+
         let mut cursor_pos = Vec2::ZERO;
 
-        let mut selected_node = None;
+        let mut selected_node: Option<u32> = None;
+
+        let mut place_mode = false;
 
         event_loop.run(move |event, _, control_flow| {
             *control_flow = ControlFlow::Poll;
@@ -118,10 +122,10 @@ impl Renderer {
                         ..
                     } => match state {
                         ElementState::Pressed => {
-                            mouse_held.insert(button, true);
+                            event_manager.insert_mouse_button(button);
                         }
                         ElementState::Released => {
-                            mouse_held.remove(&button);
+                            event_manager.remove_mouse_button(&button);
                         }
                     },
                     WindowEvent::CursorMoved { position, .. } => {
@@ -143,10 +147,10 @@ impl Renderer {
                         }
                         Some(keycode) => match input.state {
                             ElementState::Pressed => {
-                                keys_held.insert(keycode);
+                                event_manager.insert_key(keycode);
                             }
                             ElementState::Released => {
-                                keys_held.remove(&keycode);
+                                event_manager.remove_key(&keycode);
                             }
                         },
                         None => (),
@@ -156,41 +160,47 @@ impl Renderer {
                 _ => (),
             }
 
-            let self_arc_clone = Arc::clone(&self_arc);
-            let mut self_mutex = self_arc_clone.lock().unwrap();
-
-            // Camera movement
-            if keys_held.contains(&winit::event::VirtualKeyCode::W) {
-                camera.position[1] += CAMERA_MOVEMENT_SENSITIVITY * delta_time;
-            }
-            if keys_held.contains(&winit::event::VirtualKeyCode::S) {
-                camera.position[1] -= CAMERA_MOVEMENT_SENSITIVITY * delta_time;
-            }
-            if keys_held.contains(&winit::event::VirtualKeyCode::A) {
-                camera.position[0] -= CAMERA_MOVEMENT_SENSITIVITY * delta_time;
-            }
-            if keys_held.contains(&winit::event::VirtualKeyCode::D) {
-                camera.position[0] += CAMERA_MOVEMENT_SENSITIVITY * delta_time;
-            }
-
             let mut highlight_index = vec![];
-            if let Some(value) = mouse_held.get_mut(&winit::event::MouseButton::Left) {
-                let v = cursor_pos_to_world_vec(&window, &camera, &cursor_pos);
-                let v =
-                    vector_plane_intersection(v, camera.position, Vec4::new(0.0, 0.0, 1.0, 0.0), 2);
 
-                if *value {
-                    selected_node = sim.find_closest_node_index(v);
-                    *value = false;
+            camera_movement(&mut event_manager, &mut camera, delta_time);
+
+            if let Some(event) = event_manager.get_key_event(&winit::event::VirtualKeyCode::P) {
+                if event.is_initial_check() {
+                    place_mode = !place_mode;
                 }
+            }
 
-                if let Some(index) = selected_node {
-                    sim.set_node_location_by_index(v, index);
-                    highlight_index.push(index);
+            if let Some(input_event) =
+                event_manager.get_mouse_button_event(&winit::event::MouseButton::Left)
+            {
+                let vector = cursor_pos_to_world_vec(&window, &camera, &cursor_pos);
+                let intersection_point = vector_plane_intersection(
+                    vector,
+                    camera.position,
+                    Vec4::new(0.0, 0.0, 1.0, 0.0),
+                    2,
+                );
+
+                if !place_mode {
+                    if (*input_event).is_initial_check() {
+                        selected_node = sim.find_closest_node_index(intersection_point);
+                    }
+
+                    if let Some(index) = selected_node {
+                        sim.set_node_location_by_index(intersection_point, index);
+                        highlight_index.push(index);
+                    }
+                } else if (input_event.is_initial_check()
+                    || input_event.time_engaged().as_secs_f32() > 0.5)
+                    && !*toggle_sim.read().unwrap()
+                {
+                    input_event.reset_timer();
+                    sim.insert_node(intersection_point);
                 }
             }
 
             if last_redraw.elapsed().as_millis() >= 34 {
+                let mut self_mutex = self_arc.lock().unwrap();
                 last_redraw = Instant::now();
                 self_mutex.draw_graph(
                     &display_rc,
@@ -242,7 +252,6 @@ impl Renderer {
             Arc::clone(&sim),
             &mut target,
             display,
-            &max_mass,
             &uniforms,
             &params,
             highlight_index,
@@ -321,4 +330,20 @@ fn normalize_view_space(window: &Window, view_space_coordinate: &Vec2) -> Vec2 {
     normalized_view_space[1] /= height as f32;
 
     normalized_view_space - 1.0
+}
+
+fn camera_movement(event_manager: &mut EventManager, camera: &mut Camera, delta_time: f32) {
+    // Camera movement
+    if event_manager.contains_key(&winit::event::VirtualKeyCode::W) {
+        camera.position[1] += CAMERA_MOVEMENT_SENSITIVITY * delta_time;
+    }
+    if event_manager.contains_key(&winit::event::VirtualKeyCode::S) {
+        camera.position[1] -= CAMERA_MOVEMENT_SENSITIVITY * delta_time;
+    }
+    if event_manager.contains_key(&winit::event::VirtualKeyCode::A) {
+        camera.position[0] -= CAMERA_MOVEMENT_SENSITIVITY * delta_time;
+    }
+    if event_manager.contains_key(&winit::event::VirtualKeyCode::D) {
+        camera.position[0] += CAMERA_MOVEMENT_SENSITIVITY * delta_time;
+    }
 }

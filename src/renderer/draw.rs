@@ -4,6 +4,7 @@ use std::{f32::consts::PI, sync::Arc};
 use crate::simulator::Simulator;
 use glium::{
     glutin::surface::WindowSurface,
+    implement_vertex,
     uniforms::{AsUniformValue, Uniforms, UniformsStorage},
     Display, DrawParameters, Frame, Surface,
 };
@@ -28,6 +29,26 @@ void main() {
 }
 "#;
 
+static INSTANCE_SHADER_SRC: &str = r#"
+#version 150
+
+in vec3 position;
+in vec3 color;
+in vec3 color_attr;
+in vec3 world_position;
+in float scale;
+
+out vec4 vertex_color;
+
+uniform mat4 projection;
+uniform mat4 matrix;
+
+void main() {
+    vertex_color = vec4(color_attr, 1.0);
+    gl_Position = projection * matrix * vec4((position*scale)+world_position, 1.0);
+}
+"#;
+
 static FRAGMENT_SHADER_SRC: &str = r#"
 #version 140
 
@@ -38,6 +59,14 @@ void main() {
     color = vec4(vertex_color);
 }
 "#;
+
+#[derive(Copy, Clone)]
+struct Attr {
+    color_attr: [f32; 3],
+    world_position: [f32; 3],
+    scale: f32,
+}
+implement_vertex!(Attr, color_attr, world_position, scale);
 
 pub fn draw_edge<H, R>(
     sim: Arc<Simulator>,
@@ -89,7 +118,6 @@ pub fn draw_node<H, R>(
     sim: Arc<Simulator>,
     target: &mut Frame,
     display: &Display<WindowSurface>,
-    max_m: &f32,
     uniform: &UniformsStorage<H, R>,
     params: &DrawParameters,
     highlight_index: Vec<u32>,
@@ -98,37 +126,53 @@ pub fn draw_node<H, R>(
     R: Uniforms,
 {
     let program =
-        glium::Program::from_source(display, VERTEX_SHADER_SRC, FRAGMENT_SHADER_SRC, None).unwrap();
+        glium::Program::from_source(display, INSTANCE_SHADER_SRC, FRAGMENT_SHADER_SRC, None)
+            .unwrap();
 
     let mut shape: Vec<Vertex> = vec![];
     let graph_read_guard = sim.rigid_bodies.read().unwrap();
 
+    shape.append(&mut shapes::circle(
+        [0.0, 0.0, 0.0],
+        [0.0, 0.0, 0.0, 0.0],
+        1.0,
+        10,
+    ));
+
+    let mut attr_list: Vec<Attr> = vec![];
+
     for (e, rb) in graph_read_guard.iter().enumerate() {
-        let pos = [rb.position[0], rb.position[1], 0.0];
-        let r = f32::sqrt(rb.mass * PI) * 0.1;
-
         let mut rand = StdRng::seed_from_u64(e as u64);
-
         let mut highlight_mul = 1.0;
 
         if !highlight_index.is_empty() && !highlight_index.contains(&(e as u32)) {
             highlight_mul = 0.5;
         }
 
-        let color = [
+        let color_attr = [
             (rand.gen_range(10..=100) as f32) / 100.0 * highlight_mul,
             (rand.gen_range(10..=100) as f32) / 100.0 * highlight_mul,
             (rand.gen_range(10..=100) as f32) / 100.0 * highlight_mul,
-            rb.mass / max_m,
         ];
 
-        shape.append(&mut shapes::circle(pos, color, r, 10));
+        attr_list.push(Attr {
+            color_attr,
+            world_position: [rb.position[0], rb.position[1], 0.0],
+            scale: (rb.mass / PI).sqrt() / 2.0,
+        })
     }
 
     let vertex_buffer = glium::VertexBuffer::new(display, &shape).unwrap();
+    let instance_buffer = glium::vertex::VertexBuffer::dynamic(display, &attr_list).unwrap();
     let indices = glium::index::NoIndices(glium::index::PrimitiveType::TrianglesList);
 
     target
-        .draw(&vertex_buffer, indices, &program, uniform, params)
+        .draw(
+            (&vertex_buffer, instance_buffer.per_instance().unwrap()),
+            indices,
+            &program,
+            uniform,
+            params,
+        )
         .unwrap();
 }
