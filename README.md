@@ -3,6 +3,12 @@
 A library to simulate and visualize a 2D [force directed graph](https://en.wikipedia.org/wiki/Force-directed_graph_drawing) in rust.
 ![plot](./example_images/example.gif)
 
+## Features
+
+- Render PetGraphs in 2D
+- Physics based positioning via a Force Directed Graph
+- Drag Nodes to a new position
+
 ## Algorithms
 
 ### Barnes–Hut
@@ -26,6 +32,7 @@ On a Ryzen 7 3700X the library can calculate 2000 simulation steps per second at
 - `space` - Start/Pause simulation
 - `scroll wheel` - Zoom in or out
 - `W`, `A`, `S` and `D` - to move the camera
+- `Click` and `drag` - move nodes
 
 ## Usage
 
@@ -50,5 +57,4 @@ On a Ryzen 7 3700X the library can calculate 2000 simulation steps per second at
 
 - [Basic Barabasi Albert Graph](examples/basic.rs)
 - [Section of Wikipedia Graph](examples/wikipedia.rs)
-- [Headless Grpah](examples/headless.rs)
-
+- [Headless Graph](examples/headless.rs)

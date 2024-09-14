@@ -1,4 +1,4 @@
-use glam::Vec3;
+use glam::{Mat4, Vec3};
 
 pub struct Camera {
     pub position: Vec3,
@@ -23,7 +23,7 @@ impl Camera {
         self.up = self.direction.cross(self.right);
     }
 
-    pub fn matrix(&self) -> [[f32; 4]; 4] {
+    pub fn matrix(&self) -> Mat4 {
         let d = self.direction;
         let r = self.right;
         let u = self.up;
@@ -31,11 +31,11 @@ impl Camera {
         let px = pp.dot(r);
         let py = pp.dot(u);
         let pz = pp.dot(d);
-        [
+        Mat4::from_cols_array_2d(&[
             [r[0], u[0], d[0], 0.0],
             [r[1], u[1], d[1], 0.0],
             [r[2], u[2], d[2], 0.0],
             [px, py, pz, 1.0],
-        ]
+        ])
     }
 }

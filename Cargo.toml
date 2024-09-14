@@ -1,6 +1,6 @@
 [package]
 name = "grapher"
-version = "0.2.0"
+version = "0.2.1"
 edition = "2021"
 authors = [ "Alexander Neuhäuser <alexander.neuhaeuser@leafnova.net>" ]
 repository = "https://github.com/iceHtwoO/RustGrapher"

@@ -4,7 +4,7 @@ use std::{
     thread::{self, JoinHandle},
 };
 
-use glam::Vec2;
+use glam::{Vec2, Vec3, Vec3Swizzles};
 use petgraph::{
     prelude::StableGraph,
     visit::{EdgeRef, IntoEdgeReferences},
@@ -38,6 +38,31 @@ pub struct Simulator {
 impl Simulator {
     pub fn builder() -> SimulatorBuilder {
         SimulatorBuilder::default()
+    }
+
+    pub fn average_node_position(&self) -> Vec2 {
+        let rb_guard = self.rigid_bodies.read().unwrap();
+
+        let mut avg = Vec2::ZERO;
+        for rb in rb_guard.iter() {
+            avg += rb.position;
+        }
+
+        avg / rb_guard.len() as f32
+    }
+
+    pub fn max_node_mass(&self) -> f32 {
+        let graph_read_guard = self.rigid_bodies.read().unwrap();
+        let mut max_m = 0.0;
+        for rb in graph_read_guard.iter() {
+            max_m = rb.mass.max(max_m);
+        }
+        max_m
+    }
+
+    pub fn insert_node(&self, vec: Vec3) {
+        let mut rb = self.rigid_bodies.write().unwrap();
+        rb.push(RigidBody2D::new(vec.xy(), 5.0));
     }
 
     pub fn simulation_step(&self) {
@@ -226,24 +251,27 @@ impl Simulator {
         -node.position * node.mass * gravity_force
     }
 
-    pub fn average_node_position(&self) -> Vec2 {
-        let rb_guard = self.rigid_bodies.read().unwrap();
-
-        let mut avg = Vec2::ZERO;
-        for rb in rb_guard.iter() {
-            avg += rb.position;
+    pub fn find_closest_node_index(&self, loc: Vec3) -> Option<u32> {
+        let rb_read = self.rigid_bodies.read().unwrap();
+        let mut dist = f32::INFINITY;
+        let mut index = 0;
+        for (i, rb) in rb_read.iter().enumerate() {
+            let new_dist = rb.position.distance(loc.xy());
+            if new_dist < dist {
+                dist = new_dist;
+                index = i as u32;
+            }
         }
-
-        avg / rb_guard.len() as f32
+        if dist.is_infinite() {
+            None
+        } else {
+            Some(index)
+        }
     }
 
-    pub fn max_node_mass(&self) -> f32 {
-        let graph_read_guard = self.rigid_bodies.read().unwrap();
-        let mut max_m = 0.0;
-        for rb in graph_read_guard.iter() {
-            max_m = rb.mass.max(max_m);
-        }
-        max_m
+    pub fn set_node_location_by_index(&self, loc: Vec3, index: u32) {
+        let mut rb_write = self.rigid_bodies.write().unwrap();
+        rb_write[index as usize].position = loc.xy();
     }
 }
 
