@@ -38,14 +38,15 @@ implement_vertex!(Vertex, position, color);
 
 /// Renders a petgraph `StableGraph`
 pub struct Renderer {
-    simulator: Arc<Simulator>,
+    scene_context: Arc<Mutex<SceneContext>>,
 }
 
 impl Renderer {
     /// Creates a instance of the `Renderer`
     pub fn new(simulator: Simulator) -> Self {
+        let scene_context = SceneContext::new(simulator);
         Self {
-            simulator: Arc::new(simulator),
+            scene_context: Arc::new(Mutex::new(scene_context)),
         }
     }
 
@@ -69,199 +70,119 @@ impl Renderer {
         // Timing
         let mut last_redraw = Instant::now();
         let mut last_event_cycle = Instant::now();
-        let mut last_pause = Instant::now();
-        // Camera
-        let mut camera = Camera::new(Vec3::new(0.0, 0.0, 5.0));
-        camera.look_at(&Vec3::ZERO);
 
-        //Config
-        let toggle_sim = Arc::new(RwLock::new(false));
+        let scene_context_arc: Arc<Mutex<SceneContext>> = Arc::clone(&self.scene_context);
+        self.spawn_simulation_thread();
 
-        let sim: Arc<Simulator> = Arc::clone(&self.simulator);
-        self.spawn_simulation_thread(Arc::clone(&toggle_sim));
-
-        let self_arc = Arc::new(Mutex::new(self));
         let display_rc = Rc::new(display);
-
-        let mut event_manager = EventManager::new();
-
-        let mut cursor_pos = Vec2::ZERO;
-
-        let mut selected_node: Option<u32> = None;
-
-        let mut place_mode = false;
 
         event_loop.run(move |event, _, control_flow| {
             *control_flow = ControlFlow::Poll;
 
-            let delta_time = last_event_cycle.elapsed().as_secs_f32();
-            last_event_cycle = Instant::now();
-
-            #[allow(clippy::single_match)]
             #[allow(clippy::collapsible_match)]
-            match event {
-                Event::WindowEvent { event, .. } => match event {
+            if let Event::WindowEvent { event, .. } = &event {
+                match event {
                     WindowEvent::CloseRequested | WindowEvent::Destroyed => {
                         *control_flow = ControlFlow::Exit;
                     }
-
-                    WindowEvent::MouseWheel { delta, .. } => match delta {
-                        winit::event::MouseScrollDelta::LineDelta(_, y) => {
-                            if y < 0.0 {
-                                camera.position[2] -= SCROLL_SENSITIVITY;
-                            } else if y > 0.0 {
-                                camera.position[2] += SCROLL_SENSITIVITY;
-                            }
-                        }
-                        _ => (),
-                    },
-                    WindowEvent::MouseInput {
-                        device_id,
-                        state,
-                        button,
-                        ..
-                    } => match state {
-                        ElementState::Pressed => {
-                            event_manager.insert_mouse_button(button);
-                        }
-                        ElementState::Released => {
-                            event_manager.remove_mouse_button(&button);
-                        }
-                    },
-                    WindowEvent::CursorMoved { position, .. } => {
-                        cursor_pos[0] = position.x as f32;
-                        cursor_pos[1] = position.y as f32;
-                    }
-                    WindowEvent::KeyboardInput { input, .. } => match input.virtual_keycode {
-                        Some(winit::event::VirtualKeyCode::Space) => {
-                            if last_pause.elapsed().as_millis() >= 400 {
-                                let mut toggle_sim_write_guard = toggle_sim.write().unwrap();
-                                *toggle_sim_write_guard = !(*toggle_sim_write_guard);
-                                last_pause = Instant::now();
-                            }
-                        }
-                        Some(winit::event::VirtualKeyCode::Return) => {
-                            let avg = sim.average_node_position();
-                            camera.position[0] = avg[0];
-                            camera.position[1] = avg[1];
-                        }
-                        Some(keycode) => match input.state {
-                            ElementState::Pressed => {
-                                event_manager.insert_key(keycode);
-                            }
-                            ElementState::Released => {
-                                event_manager.remove_key(&keycode);
-                            }
-                        },
-                        None => (),
-                    },
                     _ => (),
-                },
-                _ => (),
-            }
-
-            let mut highlight_index = vec![];
-
-            camera_movement(&mut event_manager, &mut camera, delta_time);
-
-            if let Some(event) = event_manager.get_key_event(&winit::event::VirtualKeyCode::P) {
-                if event.is_initial_check() {
-                    place_mode = !place_mode;
                 }
             }
 
-            if let Some(input_event) =
-                event_manager.get_mouse_button_event(&winit::event::MouseButton::Left)
+            events(&event, Arc::clone(&scene_context_arc));
+
+            let mut scene_context = scene_context_arc.lock().unwrap();
+
+            let delta_time = last_event_cycle.elapsed().as_secs_f32();
+            last_event_cycle = Instant::now();
+
+            let mut highlight_index = vec![];
+
+            camera_movement(&mut scene_context, delta_time);
+
+            if let Some(event) = scene_context
+                .event_manager
+                .get_key_event_mut(&winit::event::VirtualKeyCode::P)
             {
-                let vector = cursor_pos_to_world_vec(&window, &camera, &cursor_pos);
+                if event.is_initial_check() {
+                    scene_context.place_mode = !scene_context.place_mode;
+                }
+            }
+
+            if scene_context
+                .event_manager
+                .contains_mouse_button(&winit::event::MouseButton::Left)
+            {
+                let sim = Arc::clone(&scene_context.simulator);
+
+                let vector = cursor_pos_to_world_vec(
+                    &window,
+                    &scene_context.camera,
+                    &scene_context.cursor_pos,
+                );
                 let intersection_point = vector_plane_intersection(
                     vector,
-                    camera.position,
+                    scene_context.camera.position,
                     Vec4::new(0.0, 0.0, 1.0, 0.0),
                     2,
                 );
 
-                if !place_mode {
-                    if (*input_event).is_initial_check() {
-                        selected_node = sim.find_closest_node_index(intersection_point);
+                let is_initial;
+                let time_engaged;
+                {
+                    let event = scene_context
+                        .event_manager
+                        .get_mouse_button_event_mut(&winit::event::MouseButton::Left)
+                        .unwrap();
+                    is_initial = event.is_initial_check();
+                    time_engaged = event.time_engaged();
+                }
+
+                if !scene_context.place_mode {
+                    let selected_node = &mut scene_context.selected_node_index;
+
+                    if is_initial {
+                        *selected_node = sim.find_closest_node_index(intersection_point);
                     }
 
-                    if let Some(index) = selected_node {
+                    if let Some(index) = *selected_node {
                         sim.set_node_location_by_index(intersection_point, index);
                         highlight_index.push(index);
                     }
-                } else if (input_event.is_initial_check()
-                    || input_event.time_engaged().as_secs_f32() > 0.5)
-                    && !*toggle_sim.read().unwrap()
+                } else if (is_initial || time_engaged.as_secs_f32() > 0.5)
+                    && !*scene_context.toggle_sim.read().unwrap()
                 {
-                    input_event.reset_timer();
+                    scene_context
+                        .event_manager
+                        .get_mouse_button_event_mut(&winit::event::MouseButton::Left)
+                        .unwrap()
+                        .reset_timer();
                     sim.insert_node(intersection_point);
                 }
             }
 
+            drop(scene_context);
+
             if last_redraw.elapsed().as_millis() >= 34 {
-                let mut self_mutex = self_arc.lock().unwrap();
                 last_redraw = Instant::now();
-                self_mutex.draw_graph(
+                draw_graph(
+                    Arc::clone(&scene_context_arc),
                     &display_rc,
-                    Arc::clone(&sim),
-                    &camera,
                     &window,
-                    highlight_index,
+                    &highlight_index,
                 );
             }
         });
     }
 
-    fn draw_graph(
-        &mut self,
-        display: &Display<WindowSurface>,
-        sim: Arc<Simulator>,
-        camera: &Camera,
-        window: &Window,
-        highlight_index: Vec<u32>,
-    ) {
-        let mut target = display.draw();
-        target.clear_color_and_depth((0.0, 0.0, 0.0, 1.0), 1.0);
-
-        let max_mass = { sim.max_node_mass() };
-
-        let uniforms = uniform! {
-            matrix: camera.matrix().to_cols_array_2d(),
-            projection: build_perspective_matrix(window).to_cols_array_2d()
-        };
-
-        let params = glium::DrawParameters {
-            depth: glium::Depth {
-                test: glium::draw_parameters::DepthTest::IfLess,
-                write: true,
-                ..Default::default()
-            },
-            ..Default::default()
-        };
-
-        draw::draw_edge(
-            Arc::clone(&sim),
-            &mut target,
-            display,
-            &max_mass,
-            &uniforms,
-            &params,
-        );
-        draw::draw_node(
-            Arc::clone(&sim),
-            &mut target,
-            display,
-            &uniforms,
-            &params,
-            highlight_index,
-        );
-
-        target.finish().unwrap();
-    }
-
-    fn spawn_simulation_thread(&self, toggle_sim: Arc<RwLock<bool>>) {
-        let sim = Arc::clone(&self.simulator);
+    fn spawn_simulation_thread(&self) {
+        let sim;
+        let toggle_sim;
+        {
+            let scene_context = self.scene_context.lock().unwrap();
+            sim = Arc::clone(&scene_context.simulator);
+            toggle_sim = Arc::clone(&scene_context.toggle_sim);
+        }
 
         thread::spawn(move || loop {
             let toggle_sim_read_guard = toggle_sim.read().unwrap();
@@ -273,6 +194,78 @@ impl Renderer {
             }
         });
     }
+}
+
+struct SceneContext {
+    camera: Camera,
+    event_manager: EventManager,
+    cursor_pos: Vec2,
+    selected_node_index: Option<u32>,
+    simulator: Arc<Simulator>,
+    last_pause: Instant,
+
+    toggle_sim: Arc<RwLock<bool>>,
+    place_mode: bool,
+}
+
+impl SceneContext {
+    pub fn new(simulator: Simulator) -> Self {
+        let mut camera = Camera::new(Vec3::new(0.0, 0.0, 150.0));
+        camera.look_at(&Vec3::ZERO);
+
+        Self {
+            camera,
+            event_manager: EventManager::new(),
+            cursor_pos: Vec2::ZERO,
+            selected_node_index: None,
+            simulator: Arc::new(simulator),
+            last_pause: Instant::now(),
+            toggle_sim: Arc::new(RwLock::new(false)),
+            place_mode: false,
+        }
+    }
+}
+
+fn draw_graph(
+    scene_context: Arc<Mutex<SceneContext>>,
+    display: &Display<WindowSurface>,
+    window: &Window,
+    highlight_index: &[u32],
+) {
+    let mut target = display.draw();
+    target.clear_color_and_depth((0.0, 0.0, 0.0, 1.0), 1.0);
+
+    let uniforms = uniform! {
+        matrix: scene_context.lock().unwrap().camera.matrix().to_cols_array_2d(),
+        projection: build_perspective_matrix(window).to_cols_array_2d()
+    };
+
+    let params = glium::DrawParameters {
+        depth: glium::Depth {
+            test: glium::draw_parameters::DepthTest::IfLess,
+            write: true,
+            ..Default::default()
+        },
+        ..Default::default()
+    };
+
+    draw::draw_edge(
+        Arc::clone(&scene_context),
+        &mut target,
+        display,
+        &uniforms,
+        &params,
+    );
+    draw::draw_node(
+        Arc::clone(&scene_context),
+        &mut target,
+        display,
+        &uniforms,
+        &params,
+        highlight_index,
+    );
+
+    target.finish().unwrap();
 }
 
 fn build_perspective_matrix(window: &Window) -> Mat4 {
@@ -332,7 +325,10 @@ fn normalize_view_space(window: &Window, view_space_coordinate: &Vec2) -> Vec2 {
     normalized_view_space - 1.0
 }
 
-fn camera_movement(event_manager: &mut EventManager, camera: &mut Camera, delta_time: f32) {
+fn camera_movement(scene_context: &mut SceneContext, delta_time: f32) {
+    let event_manager = &scene_context.event_manager;
+    let camera = &mut scene_context.camera;
+
     // Camera movement
     if event_manager.contains_key(&winit::event::VirtualKeyCode::W) {
         camera.position[1] += CAMERA_MOVEMENT_SENSITIVITY * delta_time;
@@ -345,5 +341,69 @@ fn camera_movement(event_manager: &mut EventManager, camera: &mut Camera, delta_
     }
     if event_manager.contains_key(&winit::event::VirtualKeyCode::D) {
         camera.position[0] += CAMERA_MOVEMENT_SENSITIVITY * delta_time;
+    }
+}
+
+fn events(event: &Event<'_, ()>, scene_context: Arc<Mutex<SceneContext>>) {
+    let mut scene_context = scene_context.lock().unwrap();
+
+    #[allow(clippy::collapsible_match)]
+    if let Event::WindowEvent { event, .. } = event {
+        match event {
+            WindowEvent::MouseWheel { delta, .. } => {
+                if let winit::event::MouseScrollDelta::LineDelta(_, y) = delta {
+                    if *y < 0.0 {
+                        scene_context.camera.position[2] -= SCROLL_SENSITIVITY;
+                    } else if *y > 0.0 {
+                        scene_context.camera.position[2] += SCROLL_SENSITIVITY;
+                    }
+                }
+            }
+            WindowEvent::MouseInput { state, button, .. } => {
+                let event_manager = &mut scene_context.event_manager;
+                match state {
+                    ElementState::Pressed => {
+                        event_manager.insert_mouse_button(*button);
+                    }
+                    ElementState::Released => {
+                        event_manager.remove_mouse_button(button);
+                    }
+                }
+            }
+            WindowEvent::CursorMoved { position, .. } => {
+                scene_context.cursor_pos[0] = position.x as f32;
+                scene_context.cursor_pos[1] = position.y as f32;
+            }
+            WindowEvent::KeyboardInput { input, .. } => match input.virtual_keycode {
+                Some(winit::event::VirtualKeyCode::Space) => {
+                    if scene_context.last_pause.elapsed().as_millis() >= 400 {
+                        {
+                            let mut toggle_sim_write_guard =
+                                scene_context.toggle_sim.write().unwrap();
+                            *toggle_sim_write_guard = !(*toggle_sim_write_guard);
+                        }
+                        scene_context.last_pause = Instant::now();
+                    }
+                }
+                Some(winit::event::VirtualKeyCode::Return) => {
+                    let avg = scene_context.simulator.average_node_position();
+                    scene_context.camera.position[0] = avg[0];
+                    scene_context.camera.position[1] = avg[1];
+                }
+                Some(keycode) => {
+                    let event_manager = &mut scene_context.event_manager;
+                    match input.state {
+                        ElementState::Pressed => {
+                            event_manager.insert_key(keycode);
+                        }
+                        ElementState::Released => {
+                            event_manager.remove_key(&keycode);
+                        }
+                    }
+                }
+                None => (),
+            },
+            _ => (),
+        }
     }
 }

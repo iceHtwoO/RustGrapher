@@ -61,7 +61,11 @@ impl EventManager {
         self.key_event.contains_key(vk)
     }
 
-    pub fn get_key_event(&mut self, vk: &VirtualKeyCode) -> Option<&mut InputEvent> {
+    pub fn get_key_event(&mut self, vk: &VirtualKeyCode) -> Option<&InputEvent> {
+        self.key_event.get(vk)
+    }
+
+    pub fn get_key_event_mut(&mut self, vk: &VirtualKeyCode) -> Option<&mut InputEvent> {
         self.key_event.get_mut(vk)
     }
 
@@ -78,7 +82,12 @@ impl EventManager {
         self.mouse_event.contains_key(mb)
     }
 
-    pub fn get_mouse_button_event(&mut self, mb: &MouseButton) -> Option<&mut InputEvent> {
+    #[allow(dead_code)]
+    pub fn get_mouse_button_event(&self, mb: &MouseButton) -> Option<&InputEvent> {
+        self.mouse_event.get(mb)
+    }
+
+    pub fn get_mouse_button_event_mut(&mut self, mb: &MouseButton) -> Option<&mut InputEvent> {
         self.mouse_event.get_mut(mb)
     }
 }

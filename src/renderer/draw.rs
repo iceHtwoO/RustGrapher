@@ -1,7 +1,9 @@
 use core::f32;
-use std::{f32::consts::PI, sync::Arc};
+use std::{
+    f32::consts::PI,
+    sync::{Arc, Mutex},
+};
 
-use crate::simulator::Simulator;
 use glium::{
     glutin::surface::WindowSurface,
     implement_vertex,
@@ -11,7 +13,7 @@ use glium::{
 
 use rand::{rngs::StdRng, Rng, SeedableRng};
 
-use super::{shapes, Vertex};
+use super::{shapes, SceneContext, Vertex};
 
 static VERTEX_SHADER_SRC: &str = r#"
 #version 150
@@ -69,39 +71,45 @@ struct Attr {
 implement_vertex!(Attr, color_attr, world_position, scale);
 
 pub fn draw_edge<H, R>(
-    sim: Arc<Simulator>,
+    scene_context: Arc<Mutex<SceneContext>>,
     target: &mut Frame,
     display: &Display<WindowSurface>,
-    max_m: &f32,
     uniform: &UniformsStorage<H, R>,
     params: &DrawParameters,
 ) where
     H: AsUniformValue,
     R: Uniforms,
 {
+    let scene_context = scene_context.lock().unwrap();
+
     let program =
         glium::Program::from_source(display, VERTEX_SHADER_SRC, FRAGMENT_SHADER_SRC, None).unwrap();
 
     let mut shape: Vec<Vertex> = vec![];
 
-    let spring_read_guard = sim.springs.read().unwrap();
-    let rb_read_guard = sim.rigid_bodies.read().unwrap();
+    let spring_read_guard = scene_context.simulator.springs.read().unwrap();
+    let rb_read_guard = scene_context.simulator.rigid_bodies.read().unwrap();
+
+    let mut longest_len = 0.0_f32;
 
     for edge in spring_read_guard.iter() {
         let rb1 = &rb_read_guard[edge.rb1];
         let rb2 = &rb_read_guard[edge.rb2];
 
-        let min_m = rb1.mass.min(rb2.mass);
-        let color = [
-            min_m / max_m * 10.0,
-            min_m / max_m * 6.0,
-            min_m / max_m * 6.0,
-            min_m / max_m,
-        ];
+        longest_len = longest_len.max(rb1.position.distance(rb2.position));
+    }
+
+    for edge in spring_read_guard.iter() {
+        let rb1 = &rb_read_guard[edge.rb1];
+        let rb2 = &rb_read_guard[edge.rb2];
+
+        let dist = rb1.position.distance(rb2.position);
+
+        let color = [dist / longest_len, 0.0, 0.0, 0.0];
 
         shape.append(&mut shapes::line(
-            [rb1.position[0], rb1.position[1], -0.1],
-            [rb2.position[0], rb2.position[1], -0.1],
+            [rb1.position[0], rb1.position[1], -1.0],
+            [rb2.position[0], rb2.position[1], -1.0],
             color,
         ));
     }
@@ -115,22 +123,24 @@ pub fn draw_edge<H, R>(
 }
 
 pub fn draw_node<H, R>(
-    sim: Arc<Simulator>,
+    scene_context: Arc<Mutex<SceneContext>>,
     target: &mut Frame,
     display: &Display<WindowSurface>,
     uniform: &UniformsStorage<H, R>,
     params: &DrawParameters,
-    highlight_index: Vec<u32>,
+    highlight_index: &[u32],
 ) where
     H: AsUniformValue,
     R: Uniforms,
 {
+    let scene_context = scene_context.lock().unwrap();
+
     let program =
         glium::Program::from_source(display, INSTANCE_SHADER_SRC, FRAGMENT_SHADER_SRC, None)
             .unwrap();
 
     let mut shape: Vec<Vertex> = vec![];
-    let graph_read_guard = sim.rigid_bodies.read().unwrap();
+    let graph_read_guard = scene_context.simulator.rigid_bodies.read().unwrap();
 
     shape.append(&mut shapes::circle(
         [0.0, 0.0, 0.0],

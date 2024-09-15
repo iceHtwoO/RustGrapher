@@ -1,7 +1,3 @@
-extern crate glium;
-extern crate grapher;
-extern crate winit;
-
 use grapher::renderer::Renderer;
 use grapher::simulator::SimulatorBuilder;
 use petgraph::Directed;

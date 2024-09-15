@@ -12,7 +12,9 @@ exclude = [
     "tools/*",
     ".vscode/*",
     "example_images/*",
-    ".github/*"
+    "examples/reference.json",
+    ".github/*",
+    "tools/*"
 ]
 
 [dependencies]
