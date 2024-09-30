@@ -36,8 +36,8 @@ impl InputEvent {
 }
 
 pub struct EventManager {
-    pub key_event: HashMap<VirtualKeyCode, InputEvent>,
-    pub mouse_event: HashMap<MouseButton, InputEvent>,
+    key_event: HashMap<VirtualKeyCode, InputEvent>,
+    mouse_event: HashMap<MouseButton, InputEvent>,
 }
 
 impl EventManager {
@@ -61,6 +61,7 @@ impl EventManager {
         self.key_event.contains_key(vk)
     }
 
+    #[allow(dead_code)]
     pub fn get_key_event(&mut self, vk: &VirtualKeyCode) -> Option<&InputEvent> {
         self.key_event.get(vk)
     }

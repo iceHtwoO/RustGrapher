@@ -1,6 +1,5 @@
 use core::f32;
 use std::{
-    fmt::Debug,
     rc::Rc,
     sync::{Arc, Mutex, RwLock},
     thread,
@@ -11,7 +10,7 @@ use crate::simulator::Simulator;
 use camera::Camera;
 use event::EventManager;
 use glam::{Mat4, Vec2, Vec3, Vec4, Vec4Swizzles};
-use glium::{glutin::surface::WindowSurface, implement_vertex, uniform, Display, Surface};
+use glium::{glutin::surface::WindowSurface, uniform, Display, Surface};
 
 use rand::Rng;
 use winit::{
@@ -27,14 +26,6 @@ mod shapes;
 
 const SCROLL_SENSITIVITY: f32 = 2.0;
 const CAMERA_MOVEMENT_SENSITIVITY: f32 = 40.0;
-
-#[derive(Copy, Clone, Debug)]
-struct Vertex {
-    position: [f32; 3],
-    color: [f32; 4],
-}
-
-implement_vertex!(Vertex, position, color);
 
 /// Renders a petgraph `StableGraph`
 pub struct Renderer {

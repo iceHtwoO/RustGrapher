@@ -13,7 +13,7 @@ use glium::{
 
 use rand::{rngs::StdRng, Rng, SeedableRng};
 
-use super::{shapes, SceneContext, Vertex};
+use super::{shapes, SceneContext};
 
 static VERTEX_SHADER_SRC: &str = r#"
 #version 150
@@ -61,6 +61,14 @@ void main() {
     color = vec4(vertex_color);
 }
 "#;
+
+#[derive(Copy, Clone, Debug)]
+pub struct Vertex {
+    pub position: [f32; 3],
+    pub color: [f32; 4],
+}
+
+implement_vertex!(Vertex, position, color);
 
 #[derive(Copy, Clone)]
 struct Attr {
